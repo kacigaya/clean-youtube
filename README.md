@@ -39,34 +39,29 @@ bun run zip          # packaged extension
 
 ## Layout
 
-- `entrypoints/adblock.content.ts` — removes ad metadata in the page's main JavaScript world
-- `entrypoints/content.ts` — injects the stylesheet, sweeps the DOM on mutation, polls as fallback
-- `lib/youtube.ts` — selectors, DOM logic and Brave-style player response pruning (tested)
+- `entrypoints/content.ts` — injects the stylesheet, sweeps the DOM on mutation, polls for ads
+- `lib/youtube.ts` — selectors and DOM logic (tested)
 - `lib/settings.ts` — settings shape, defaults, storage item
 - `entrypoints/popup/` — React popup
 - `components/ui/` — coss ui components
 
-## Anti-adblock enforcement
+## Why ads are skipped, not pruned
 
-Pruning ad metadata is exactly what YouTube looks for: the player sees the ads it scheduled never
-played, resolves an `onAbnormalityDetected` continuation, and raises the "ad blockers violate
-YouTube's Terms of Service" wall. Two things keep that from firing:
+An earlier version removed `adPlacements` / `playerAds` / `adSlots` from player responses, the way
+Brave and uBlock do. That is exactly what YouTube's enforcement looks for: the player notices the
+ads it scheduled never played and raises the "ad blockers violate YouTube's Terms of Service" wall,
+after which playback stops entirely. Suppressing the wall cosmetically only leaves a black player —
+the refusal has already happened server-side.
 
-- `installAbnormalityBypass` proxies `Promise.prototype.then` and swaps any continuation whose
-  source mentions `onAbnormalityDetected` for a no-op. Sources are read once per function and
-  cached in a `WeakSet`, since every promise on the page passes through the proxy.
-- The prune list covers the detection payloads too — `adBreakHeartbeatParams`,
-  `responseContext.adSignalsInfo` and `auxiliaryUi.messageRenderers.upsellDialogRenderer` — on both
-  the response and its nested `playerResponse`.
+So the extension no longer touches player responses. It lets YouTube deliver the ad, then mutes it,
+clicks "skip" if offered, and otherwise seeks to its end. YouTube sees an ad that played, so nothing
+triggers enforcement. The cost is up to ~200 ms of muted ad per break, bounded by the poll interval
+in `entrypoints/content.ts`.
 
-`ytd-enforcement-message-view-model` is hidden cosmetically as a backstop.
-
-YouTube changes detection often, so this is a moving target. If the wall comes back, that bypass is
-the first place to look.
+If the wall is already on screen from a previous session, it stays until YouTube clears the flag on
+its side — usually after a reload or two with the blocking behaviour gone.
 
 ## Limits
 
-The extension removes ad and detection metadata from initial, parsed, fetch and XHR player
-responses. DOM hiding and seeking remain as fallbacks. It does not block `googlevideo.com` media
-requests, avoiding playback breakage from broad rules, and it does not touch the stall timers
-YouTube uses to slow suspected blockers.
+Display ads are hidden with CSS and player ads are skipped as they start. There is no network-level
+blocking and no player-response rewriting, which is what keeps playback working.

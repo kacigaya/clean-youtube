@@ -11,36 +11,6 @@ const PREMIUM_LINK = [
 
 const SHORTS_LINK = 'a[href="/shorts"],a[href^="/shorts/"]';
 
-/**
- * Ad and enforcement payloads, as paths inside a player response. The last three
- * are what YouTube uses to detect and punish blocking: the heartbeat params it
- * expects the player to echo back, the Premium upsell dialog, and the ad
- * signals it reads to decide a session is blocking ads.
- */
-const AD_PATHS = [
-  'adPlacements',
-  'adSlots',
-  'playerAds',
-  'adBreakHeartbeatParams',
-  'auxiliaryUi.messageRenderers.upsellDialogRenderer',
-  'responseContext.adSignalsInfo',
-] as const;
-
-/** Marker of the continuation that raises the "ad blockers violate our ToS" wall. */
-const ABNORMALITY_MARKER = 'onAbnormalityDetected';
-
-/** Reading a function's source is expensive, and every promise on the page lands here. */
-const ABNORMALITY_SOURCE_LIMIT = 4096;
-
-interface AdBlockRoot {
-  JSON: JSON;
-  Promise?: PromiseConstructor;
-  Response?: { prototype: { json: () => Promise<unknown> } };
-  XMLHttpRequest?: { prototype: object };
-  playerResponse?: unknown;
-  ytInitialPlayerResponse?: unknown;
-}
-
 /** Static rules per feature, injected as one stylesheet built from the enabled ones. */
 export const CSS: Record<keyof Settings, string> = {
   hidePremiumEntry: `
@@ -68,6 +38,8 @@ export const CSS: Record<keyof Settings, string> = {
   `,
   blockAds: `
     ytd-rich-item-renderer:has(ytd-ad-slot-renderer),
+    ytd-rich-item-renderer:has(ytd-feed-nudge-renderer),
+    ytd-feed-nudge-renderer,
     ytmusic-ad-slot-renderer,
     ytmusic-ad-renderer,
     ytmusic-companion-ad-renderer,
@@ -77,12 +49,7 @@ export const CSS: Record<keyof Settings, string> = {
     ytd-in-feed-ad-layout-renderer,
     ytd-promoted-sparkles-web-renderer,
     ytd-display-ad-renderer,
-    ytd-companion-slot-renderer,
-    ytd-enforcement-message-view-model,
-    tp-yt-paper-dialog:has(ytd-enforcement-message-view-model),
-    #player-ads,
-    .ytp-ad-module,
-    .ytp-ad-overlay-container { display: none !important; }
+    ytd-companion-slot-renderer { display: none !important; }
   `,
 };
 
@@ -91,132 +58,6 @@ export function buildCss(settings: Settings): string {
     .filter((key) => settings[key])
     .map((key) => CSS[key])
     .join('\n');
-}
-
-function deletePath(target: object, path: string) {
-  const keys = path.split('.');
-  const leaf = keys.pop()!;
-  let node: unknown = target;
-  for (const key of keys) {
-    if (typeof node !== 'object' || node === null) return;
-    node = (node as Record<string, unknown>)[key];
-  }
-  if (typeof node === 'object' && node !== null) Reflect.deleteProperty(node, leaf);
-}
-
-/** Remove ad metadata before YouTube's player can schedule an ad. */
-export function prunePlayerAds(value: unknown): unknown {
-  if (typeof value !== 'object' || value === null) return value;
-
-  for (const path of AD_PATHS) {
-    deletePath(value, path);
-    deletePath(value, `playerResponse.${path}`);
-  }
-
-  return value;
-}
-
-const NOOP = () => {};
-const inspectedHandlers = new WeakSet<object>();
-const abnormalityHandlers = new WeakSet<object>();
-
-/** Cached because the proxy below sees every promise continuation on the page. */
-function isAbnormalityHandler(handler: (value: unknown) => unknown): boolean {
-  if (abnormalityHandlers.has(handler)) return true;
-  if (inspectedHandlers.has(handler)) return false;
-  inspectedHandlers.add(handler);
-
-  let source: string;
-  try {
-    source = Function.prototype.toString.call(handler);
-  } catch {
-    return false;
-  }
-  if (source.length > ABNORMALITY_SOURCE_LIMIT || !source.includes(ABNORMALITY_MARKER)) {
-    return false;
-  }
-
-  abnormalityHandlers.add(handler);
-  return true;
-}
-
-/**
- * Pruning the ad metadata is what YouTube looks for: the player notices the ads
- * it expected never played and resolves an `onAbnormalityDetected` continuation,
- * which is what raises the "ad blockers violate YouTube's Terms of Service" wall.
- * Replace that continuation with a no-op and the enforcement never runs.
- */
-export function installAbnormalityBypass(
-  root: { Promise: PromiseConstructor },
-  isEnabled: () => boolean = () => true,
-) {
-  const then = root.Promise.prototype.then;
-  root.Promise.prototype.then = new Proxy(then, {
-    apply(target, thisArg, args: Parameters<Promise<unknown>['then']>) {
-      const onFulfilled = args[0];
-      if (isEnabled() && typeof onFulfilled === 'function' && isAbnormalityHandler(onFulfilled)) {
-        args[0] = NOOP;
-      }
-      return Reflect.apply(target, thisArg, args);
-    },
-  });
-}
-
-/**
- * Install Brave-style player response pruning in the page's main world.
- */
-export function installPlayerAdBlocker(
-  root: AdBlockRoot,
-  isEnabled: () => boolean = () => true,
-) {
-  if (root.Promise) installAbnormalityBypass({ Promise: root.Promise }, isEnabled);
-
-  const parse = root.JSON.parse;
-  root.JSON.parse = new Proxy(parse, {
-    apply(target, thisArg, args: Parameters<JSON['parse']>) {
-      const value = Reflect.apply(target, thisArg, args);
-      return isEnabled() ? prunePlayerAds(value) : value;
-    },
-  });
-
-  if (root.Response) {
-    const json = root.Response.prototype.json;
-    root.Response.prototype.json = new Proxy(json, {
-      apply(target, thisArg, args) {
-        return Reflect.apply(target, thisArg, args).then((value: unknown) =>
-          isEnabled() ? prunePlayerAds(value) : value,
-        );
-      },
-    });
-  }
-
-  if (root.XMLHttpRequest) {
-    const prototype = root.XMLHttpRequest.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'response');
-    if (descriptor?.get && descriptor.configurable) {
-      Object.defineProperty(prototype, 'response', {
-        ...descriptor,
-        get() {
-          const value = descriptor.get!.call(this);
-          return isEnabled() ? prunePlayerAds(value) : value;
-        },
-      });
-    }
-  }
-
-  for (const key of ['ytInitialPlayerResponse', 'playerResponse'] as const) {
-    const descriptor = Object.getOwnPropertyDescriptor(root, key);
-    if (descriptor && !descriptor.configurable) continue;
-    let value = root[key];
-    Object.defineProperty(root, key, {
-      configurable: true,
-      enumerable: true,
-      get: () => value,
-      set: (next) => {
-        value = isEnabled() ? prunePlayerAds(next) : next;
-      },
-    });
-  }
 }
 
 /**
@@ -273,9 +114,33 @@ export function dismissUpsells(root: ParentNode = document) {
   return closed;
 }
 
-/** Skip the ad currently playing: use the skip button if offered, otherwise seek past it. */
+/** Muted state from before the current ad, restored once it is over. Keyed on the
+ * media element so a replaced player starts from that player's own state. */
+const mutedBeforeAd = new WeakMap<HTMLVideoElement, boolean>();
+
+/**
+ * Get through the ad currently playing: mute it, click skip if it is offered,
+ * otherwise seek to its end.
+ *
+ * This runs on the ad YouTube served rather than removing it from the player
+ * response, so YouTube sees an ad that played and never reaches for the
+ * "ad blockers violate YouTube's Terms of Service" wall.
+ */
 export function skipPlayerAd(root: ParentNode = document) {
-  if (!root.querySelector('.ad-showing, .ytp-ad-player-overlay')) return false;
+  const video = root.querySelector<HTMLVideoElement>('video.html5-main-video, video');
+
+  if (!root.querySelector('.ad-showing, .ytp-ad-player-overlay')) {
+    if (video && mutedBeforeAd.has(video)) {
+      video.muted = mutedBeforeAd.get(video)!;
+      mutedBeforeAd.delete(video);
+    }
+    return false;
+  }
+
+  if (video && !mutedBeforeAd.has(video)) {
+    mutedBeforeAd.set(video, video.muted);
+    video.muted = true;
+  }
 
   const skip = root.querySelector<HTMLElement>(
     '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button',
@@ -285,7 +150,7 @@ export function skipPlayerAd(root: ParentNode = document) {
     return true;
   }
 
-  const video = root.querySelector<HTMLVideoElement>('video.html5-main-video, video');
+  // Seeking to the end ends the ad; the player then loads the video as usual.
   if (video && Number.isFinite(video.duration) && video.duration > 0) {
     video.currentTime = video.duration;
     return true;

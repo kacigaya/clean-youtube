@@ -4,9 +4,6 @@ import {
   buildCss,
   dismissUpsells,
   hidePremiumGuideEntries,
-  installAbnormalityBypass,
-  installPlayerAdBlocker,
-  prunePlayerAds,
   skipPlayerAd,
 } from '@/lib/youtube';
 
@@ -41,6 +38,7 @@ describe('buildCss', () => {
     });
     expect(css).toContain('ytd-ad-slot-renderer');
     expect(css).toContain('ytd-rich-item-renderer:has(ytd-ad-slot-renderer)');
+    expect(css).toContain('ytd-rich-item-renderer:has(ytd-feed-nudge-renderer)');
     expect(css).toContain('ytd-reel-shelf-renderer');
     expect(css).toContain('a[href^="/shorts/"]');
     expect(css).not.toContain('ytmusic-statement-banner-renderer');
@@ -62,139 +60,6 @@ describe('buildCss', () => {
       'ytd-statement-banner-renderer:has(a[href*="premium" i]',
     );
     expect(CSS.blockUpsell).not.toMatch(/ytd-statement-banner-renderer,|ytd-statement-banner-renderer\s*\{/);
-  });
-});
-
-describe('player ad metadata blocking', () => {
-  test('removes only direct and nested player ad metadata', () => {
-    const response = {
-      adPlacements: [{}],
-      playerAds: [{}],
-      adSlots: [{}],
-      important: true,
-      playerResponse: { adPlacements: [{}], videoDetails: { videoId: 'song' } },
-      contents: { title: 'Song' },
-    };
-
-    const pruned = prunePlayerAds(response);
-    expect(pruned).toBe(response);
-    expect(pruned).toEqual({
-      important: true,
-      playerResponse: { videoDetails: { videoId: 'song' } },
-      contents: { title: 'Song' },
-    });
-  });
-
-  test('removes the enforcement and detection payloads', () => {
-    const response = {
-      adBreakHeartbeatParams: 'x',
-      responseContext: { adSignalsInfo: { params: [] }, visitorData: 'keep' },
-      auxiliaryUi: {
-        messageRenderers: { upsellDialogRenderer: {}, otherRenderer: { keep: true } },
-      },
-      playerResponse: { adBreakHeartbeatParams: 'x', streamingData: { formats: [] } },
-    };
-
-    expect(prunePlayerAds(response)).toEqual({
-      responseContext: { visitorData: 'keep' },
-      auxiliaryUi: { messageRenderers: { otherRenderer: { keep: true } } },
-      playerResponse: { streamingData: { formats: [] } },
-    });
-  });
-
-  test('walks past a missing branch without creating one', () => {
-    const response = { videoDetails: {} };
-    expect(prunePlayerAds(response)).toEqual({ videoDetails: {} });
-    expect(prunePlayerAds(null)).toBeNull();
-  });
-
-  test('neutralises the abnormality continuation only while enabled', async () => {
-    class TestPromise<T> extends Promise<T> {}
-    let enabled = true;
-    installAbnormalityBypass({ Promise: TestPromise as unknown as PromiseConstructor }, () => enabled);
-
-    const calls = { onAbnormalityDetected: 0, playback: 0 };
-    const enforce = () => {
-      calls.onAbnormalityDetected += 1;
-    };
-    const play = () => {
-      calls.playback += 1;
-    };
-
-    await TestPromise.resolve(null).then(enforce);
-    await TestPromise.resolve(null).then(play);
-    expect(calls).toEqual({ onAbnormalityDetected: 0, playback: 1 });
-
-    enabled = false;
-    await TestPromise.resolve(null).then(enforce);
-    expect(calls.onAbnormalityDetected).toBe(1);
-  });
-
-  test('prunes parsed and initial responses only while enabled', () => {
-    let enabled = true;
-    const root = {
-      JSON: { parse: JSON.parse, stringify: JSON.stringify } as JSON,
-      ytInitialPlayerResponse: undefined as unknown,
-      playerResponse: undefined as unknown,
-    };
-    installPlayerAdBlocker(root, () => enabled);
-
-    expect(root.JSON.parse('{"playerResponse":{"adSlots":[1],"videoDetails":{}}}')).toEqual({
-      playerResponse: { videoDetails: {} },
-    });
-    root.ytInitialPlayerResponse = { adPlacements: [1], videoDetails: {} };
-    expect(root.ytInitialPlayerResponse).toEqual({ videoDetails: {} });
-
-    enabled = false;
-    expect(root.JSON.parse('{"adSlots":[1]}')).toEqual({ adSlots: [1] });
-    root.playerResponse = { playerAds: [1] };
-    expect(root.playerResponse).toEqual({ playerAds: [1] });
-
-    enabled = true;
-    expect(
-      root.JSON.parse('{"adSlots":[1]}', (_key, value) =>
-        typeof value === 'object' && value !== null ? Object.freeze(value) : value,
-      ),
-    ).toEqual({ adSlots: [1] });
-  });
-
-  test('prunes fetch and XHR object responses only while enabled', async () => {
-    class FakeResponse {
-      constructor(private value: unknown) {}
-
-      async json() {
-        return this.value;
-      }
-    }
-
-    class FakeXMLHttpRequest {
-      constructor(private value: unknown) {}
-
-      get response() {
-        return this.value;
-      }
-    }
-
-    let enabled = true;
-    const root = {
-      JSON: { parse: JSON.parse, stringify: JSON.stringify } as JSON,
-      Response: FakeResponse,
-      XMLHttpRequest: FakeXMLHttpRequest,
-    };
-    installPlayerAdBlocker(root, () => enabled);
-
-    expect(await new root.Response({ adSlots: [1], videoDetails: {} }).json()).toEqual({
-      videoDetails: {},
-    });
-    expect(new root.XMLHttpRequest({ playerAds: [1], videoDetails: {} }).response).toEqual({
-      videoDetails: {},
-    });
-
-    enabled = false;
-    expect(await new root.Response({ adSlots: [1] }).json()).toEqual({ adSlots: [1] });
-    expect(new root.XMLHttpRequest({ adPlacements: [1] }).response).toEqual({
-      adPlacements: [1],
-    });
   });
 });
 
@@ -320,6 +185,33 @@ describe('skipPlayerAd', () => {
 
     expect(skipPlayerAd()).toBe(true);
     expect(video.currentTime).toBe(12);
+  });
+
+  test('mutes the ad and restores the sound state afterwards', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
+    const player = document.querySelector('#movie_player')!;
+    const video = document.querySelector<HTMLVideoElement>('video')!;
+    Object.defineProperty(video, 'duration', { value: 5, configurable: true });
+
+    skipPlayerAd();
+    expect(video.muted).toBe(true);
+
+    player.classList.remove('ad-showing');
+    expect(skipPlayerAd()).toBe(false);
+    expect(video.muted).toBe(false);
+  });
+
+  test('leaves a viewer-muted player muted after the ad', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
+    const player = document.querySelector('#movie_player')!;
+    const video = document.querySelector<HTMLVideoElement>('video')!;
+    video.muted = true;
+
+    skipPlayerAd();
+    player.classList.remove('ad-showing');
+    skipPlayerAd();
+
+    expect(video.muted).toBe(true);
   });
 
   test('does not seek while the ad duration is still unknown', () => {

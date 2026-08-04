@@ -12,7 +12,6 @@ export default defineContentScript({
     (document.head ?? document.documentElement).append(style);
     const applyCss = () => {
       style.textContent = buildCss(settings);
-      document.documentElement.dataset.cleanYoutubeBlockAds = settings.blockAds ? '1' : '0';
     };
 
     let queued = false;
@@ -43,9 +42,10 @@ export default defineContentScript({
       subtree: true,
     });
 
-    // Ads flip a class on the player rather than adding nodes, so poll instead of observing.
+    // Ads flip a class on the player rather than adding nodes, so poll instead of
+    // observing. Frequently, because the poll is what the viewer hears as ad length.
     ctx.setInterval(() => {
       if (settings.blockAds) skipPlayerAd();
-    }, 500);
+    }, 200);
   },
 });
