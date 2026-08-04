@@ -36,6 +36,11 @@ export const CSS: Record<keyof Settings, string> = {
     ytmusic-popup-container tp-yt-paper-dialog:has(${PREMIUM_LINK}),
     ytd-popup-container tp-yt-paper-dialog:has(${PREMIUM_LINK}) { display: none !important; }
   `,
+  /**
+   * Feed and sidebar ad containers only. Nothing inside the player is hidden:
+   * YouTube measures its own ad containers there, and a zero-sized one is read
+   * as ad blocking. Player ads are handled by skipPlayerAd instead.
+   */
   blockAds: `
     ytd-rich-item-renderer:has(ytd-ad-slot-renderer),
     ytd-rich-item-renderer:has(ytd-feed-nudge-renderer),
