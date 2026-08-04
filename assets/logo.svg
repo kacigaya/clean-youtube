@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <rect x="20" y="50" width="160" height="100" rx="24" fill="#FF0000" />
+  <polygon points="85,75 125,100 85,125" fill="#FFFFFF" />
+
+  <g transform="rotate(-45 100 100)">
+    <rect x="92" y="10" width="16" height="80" rx="4" fill="#5C3A21" />
+
+    <path d="M 86 85 L 114 85 L 135 160 Q 100 175 65 160 Z" fill="#E6C280" />
+
+    <path d="M 92 95 L 76 158 M 100 95 L 94 162 M 108 95 L 112 162 M 114 95 L 126 156" stroke="#C49A50" stroke-width="2" stroke-linecap="round" />
+
+    <rect x="84" y="80" width="32" height="14" rx="4" fill="#B87333" />
+    <line x1="84" y1="87" x2="116" y2="87" stroke="#8C5220" stroke-width="2" />
+  </g>
+</svg>
