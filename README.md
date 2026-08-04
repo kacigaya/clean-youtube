@@ -58,6 +58,14 @@ clicks "skip" if offered, and otherwise seeks to its end. YouTube sees an ad tha
 triggers enforcement. The cost is up to ~200 ms of muted ad per break, bounded by the poll interval
 in `entrypoints/content.ts`.
 
+For the same reason, no CSS rule hides anything inside the player. YouTube measures its own ad
+containers there and reads a zero-sized one as ad blocking, so `blockAds` covers feed and sidebar
+containers only.
+
+Anything else on the machine that prunes YouTube ads — Brave Shields, uBlock Origin, AdGuard — will
+raise the wall on its own, and no change here can prevent that. Disable this extension and reload:
+if the wall is still there, it is coming from the other blocker.
+
 If the wall is already on screen from a previous session, it stays until YouTube clears the flag on
 its side — usually after a reload or two with the blocking behaviour gone.
 
