@@ -7,7 +7,7 @@ export interface Settings {
   hideShorts: boolean;
   /** Auto-dismiss Premium ads, dialogs and promo bars. */
   blockUpsell: boolean;
-  /** Remove player ad metadata, with DOM hiding and skipping as fallbacks. */
+  /** Mute and skip player ads as they start, and hide feed and sidebar ad slots. */
   blockAds: boolean;
 }
 
@@ -23,6 +23,10 @@ export const settingsItem = storage.defineItem<Settings>('sync:settings', {
 });
 
 /** Stored value may predate a newly added key, so fill the gaps. */
+export function withDefaults(value: Partial<Settings> | null | undefined): Settings {
+  return { ...DEFAULT_SETTINGS, ...value };
+}
+
 export async function getSettings(): Promise<Settings> {
-  return { ...DEFAULT_SETTINGS, ...(await settingsItem.getValue()) };
+  return withDefaults(await settingsItem.getValue());
 }

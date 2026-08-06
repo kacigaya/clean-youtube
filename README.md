@@ -15,7 +15,7 @@
 
 | Toggle                 | Effect                                                                                  |
 | ---------------------- | --------------------------------------------------------------------------------------- |
-| **Block ads**          | Removes player ad metadata before playback, with DOM hiding and seeking as fallbacks     |
+| **Block ads**          | Mutes and skips player ads as they start, and hides feed and sidebar ad slots             |
 | **Hide Shorts**        | Hides Shorts navigation, shelves, cards and search results; direct `/shorts/` URLs work  |
 | **Hide Premium ads**   | Hides Premium-linked promos and banners, and closes Premium dialogs and their backdrop   |
 | **Hide Premium entry** | Removes Premium links from YouTube and YouTube Music sidebars                            |

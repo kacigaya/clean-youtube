@@ -2,7 +2,7 @@
   "name": "clean-youtube",
   "description": "Blocks ads and hides Shorts and Premium promotions on YouTube and YouTube Music.",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -17,9 +17,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
-    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.28.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.6.0"

@@ -47,7 +47,7 @@ function App() {
   return (
     <main className="flex flex-col">
       <header className="flex flex-col gap-1 px-4 py-3">
-        <h1 className="font-heading font-semibold text-base leading-none">Clean YouTube</h1>
+        <h1 className="font-semibold text-base leading-none">Clean YouTube</h1>
         <p className="text-muted-foreground text-xs">
           Keeps YouTube and YouTube Music clean.
         </p>

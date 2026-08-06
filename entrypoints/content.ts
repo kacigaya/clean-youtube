@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, getSettings, settingsItem, type Settings } from '@/lib/settings';
+import { DEFAULT_SETTINGS, getSettings, settingsItem, type Settings, withDefaults } from '@/lib/settings';
 import { buildCss, dismissUpsells, hidePremiumGuideEntries, skipPlayerAd } from '@/lib/youtube';
 
 export default defineContentScript({
@@ -32,14 +32,18 @@ export default defineContentScript({
     sweep();
 
     settingsItem.watch((value) => {
-      settings = { ...DEFAULT_SETTINGS, ...value };
+      settings = withDefaults(value);
       applyCss();
       sweep();
     });
 
-    new MutationObserver(sweep).observe(document.documentElement, {
-      childList: true,
-      subtree: true,
+    const observer = new MutationObserver(sweep);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+
+    // An extension reload invalidates this context; the observer and stylesheet outlive it.
+    ctx.onInvalidated(() => {
+      observer.disconnect();
+      style.remove();
     });
 
     // Ads flip a class on the player rather than adding nodes, so poll instead of
