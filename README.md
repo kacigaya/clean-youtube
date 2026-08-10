@@ -15,7 +15,7 @@
 
 | Toggle                 | Effect                                                                                  |
 | ---------------------- | --------------------------------------------------------------------------------------- |
-| **Block ads**          | Mutes and skips player ads as they start, and hides feed and sidebar ad slots             |
+| **Block ads**          | Mutes player ads and skips them when YouTube offers it, and hides feed and sidebar ad slots |
 | **Hide Shorts**        | Hides Shorts navigation, shelves, cards and search results; direct `/shorts/` URLs work  |
 | **Hide Premium ads**   | Hides Premium-linked promos and banners, and closes Premium dialogs and their backdrop   |
 | **Hide Premium entry** | Removes Premium links from YouTube and YouTube Music sidebars                            |
@@ -53,10 +53,14 @@ ads it scheduled never played and raises the "ad blockers violate YouTube's Term
 after which playback stops entirely. Suppressing the wall cosmetically only leaves a black player —
 the refusal has already happened server-side.
 
-So the extension no longer touches player responses. It lets YouTube deliver the ad, then mutes it,
-clicks "skip" if offered, and otherwise seeks to its end. YouTube sees an ad that played, so nothing
-triggers enforcement. The cost is up to ~200 ms of muted ad per break, bounded by the poll interval
-in `entrypoints/content.ts`.
+So the extension no longer touches player responses. It lets YouTube deliver the ad, mutes it, and
+clicks "skip" once the button is offered. An unskippable ad plays out in full, muted. The cost is
+up to ~200 ms of audible ad per break, bounded by the poll interval in `entrypoints/content.ts`.
+
+Seeking an unskippable ad to its end used to stand in for the skip button, and that was its own
+enforcement trigger: the player reports ad progress at each quartile, so an ad teleported to its end
+reports as watched in ~0 ms with every ping in one frame. That shape is impossible for a real
+viewer, YouTube flags it server-side, and the wall follows. Playback position is now left alone.
 
 For the same reason, no CSS rule hides anything inside the player. YouTube measures its own ad
 containers there and reads a zero-sized one as ad blocking, so `blockAds` covers feed and sidebar

@@ -181,13 +181,14 @@ describe('skipPlayerAd', () => {
     expect(clicks).toBe(1);
   });
 
-  test('seeks to the end of an unskippable ad', () => {
+  test('lets an unskippable ad play out instead of seeking past it', () => {
     document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
     const video = document.querySelector<HTMLVideoElement>('video')!;
     Object.defineProperty(video, 'duration', { value: 12, configurable: true });
 
-    expect(skipPlayerAd()).toBe(true);
-    expect(video.currentTime).toBe(12);
+    expect(skipPlayerAd()).toBe(false);
+    expect(video.currentTime).toBe(0);
+    expect(video.muted).toBe(true);
   });
 
   test('mutes the ad and restores the sound state afterwards', () => {
@@ -215,14 +216,5 @@ describe('skipPlayerAd', () => {
     skipPlayerAd();
 
     expect(video.muted).toBe(true);
-  });
-
-  test('does not seek while the ad duration is still unknown', () => {
-    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
-    const video = document.querySelector<HTMLVideoElement>('video')!;
-    Object.defineProperty(video, 'duration', { value: NaN, configurable: true });
-
-    expect(skipPlayerAd()).toBe(false);
-    expect(video.currentTime).toBe(0);
   });
 });

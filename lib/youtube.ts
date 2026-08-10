@@ -127,12 +127,14 @@ export function dismissUpsells(root: ParentNode = document) {
 const mutedBeforeAd = new WeakMap<HTMLVideoElement, boolean>();
 
 /**
- * Get through the ad currently playing: mute it, click skip if it is offered,
- * otherwise seek to its end.
+ * Get through the ad currently playing: mute it, and click skip if YouTube
+ * offers the button.
  *
- * This runs on the ad YouTube served rather than removing it from the player
- * response, so YouTube sees an ad that played and never reaches for the
- * "ad blockers violate YouTube's Terms of Service" wall.
+ * Nothing here moves the playback position. Seeking an ad to its end reports it
+ * as watched in ~0 ms, and the progress pings the player sends at each quartile
+ * then all fire in the same frame — an impossible playback shape that YouTube
+ * flags server-side, which is what raises the "ad blockers violate YouTube's
+ * Terms of Service" wall. An unskippable ad plays out in full, muted.
  */
 export function skipPlayerAd(root: ParentNode = document) {
   const video = root.querySelector<HTMLVideoElement>('video.html5-main-video, video');
@@ -155,12 +157,6 @@ export function skipPlayerAd(root: ParentNode = document) {
   );
   if (skip) {
     skip.click();
-    return true;
-  }
-
-  // Seeking to the end ends the ad; the player then loads the video as usual.
-  if (video && Number.isFinite(video.duration) && video.duration > 0) {
-    video.currentTime = video.duration;
     return true;
   }
 
