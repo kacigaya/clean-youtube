@@ -57,6 +57,9 @@ describe('buildCss', () => {
 
   test('Premium banner rule requires a Premium link', () => {
     expect(CSS.blockUpsell).toContain(
+      'ytd-rich-section-renderer:has(ytd-brand-video-singleton-renderer)',
+    );
+    expect(CSS.blockUpsell).toContain(
       'ytd-statement-banner-renderer:has(a[href*="premium" i]',
     );
     expect(CSS.blockUpsell).not.toMatch(/ytd-statement-banner-renderer,|ytd-statement-banner-renderer\s*\{/);

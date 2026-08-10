@@ -29,6 +29,9 @@ export const CSS: Record<keyof Settings, string> = {
     .ytLockupViewModelWrapper:has(${SHORTS_LINK}) { display: none !important; }
   `,
   blockUpsell: `
+    ytd-rich-section-renderer:has(ytd-brand-video-singleton-renderer),
+    ytd-rich-item-renderer:has(ytd-brand-video-singleton-renderer),
+    ytd-brand-video-singleton-renderer,
     ytmusic-mealbar-promo-renderer:has(${PREMIUM_LINK}),
     ytd-mealbar-promo-renderer:has(${PREMIUM_LINK}),
     ytmusic-statement-banner-renderer:has(${PREMIUM_LINK}),
