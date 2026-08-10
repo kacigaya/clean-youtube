@@ -46,10 +46,15 @@ export default defineContentScript({
       style.remove();
     });
 
+    // youtube.com raises the "ad blockers violate our ToS" wall when an ad is
+    // seeked past; YouTube Music does not enforce, so ads there are cleared
+    // outright rather than left to play muted.
+    const seekPastAd = location.hostname === 'music.youtube.com';
+
     // Ads flip a class on the player rather than adding nodes, so poll instead of
     // observing. Frequently, because the poll is what the viewer hears as ad length.
     ctx.setInterval(() => {
-      if (settings.blockAds) skipPlayerAd();
+      if (settings.blockAds) skipPlayerAd(document, seekPastAd);
     }, 200);
   },
 });

@@ -130,14 +130,19 @@ const mutedBeforeAd = new WeakMap<HTMLVideoElement, boolean>();
  * Get through the ad currently playing: mute it, and click skip if YouTube
  * offers the button.
  *
- * Nothing here moves the playback position. Seeking an ad to its end reports it
- * as watched in ~0 ms, and the progress pings the player sends at each quartile
- * then all fire in the same frame — an impossible playback shape that YouTube
- * flags server-side, which is what raises the "ad blockers violate YouTube's
- * Terms of Service" wall. An unskippable ad plays out in full, muted.
+ * `seekPastAd` also jumps an unskippable ad to its end, which clears it outright
+ * instead of leaving it to play silent. That is only safe on YouTube Music.
+ * Seeking reports the ad as watched in ~0 ms with the player's quartile progress
+ * pings all firing in one frame, and youtube.com flags that shape server-side to
+ * raise the "ad blockers violate YouTube's Terms of Service" wall. YouTube Music
+ * runs no such enforcement today, so callers there opt in.
  */
-export function skipPlayerAd(root: ParentNode = document) {
-  const video = root.querySelector<HTMLVideoElement>('video.html5-main-video, video');
+export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
+  // Two calls, not one selector list: a list matches in document order, so a
+  // stray <video> ahead of the player would win over the real one.
+  const video =
+    root.querySelector<HTMLVideoElement>('video.html5-main-video') ??
+    root.querySelector<HTMLVideoElement>('video');
 
   if (!root.querySelector('.ad-showing, .ytp-ad-player-overlay')) {
     if (video && mutedBeforeAd.has(video)) {
@@ -157,6 +162,11 @@ export function skipPlayerAd(root: ParentNode = document) {
   );
   if (skip) {
     skip.click();
+    return true;
+  }
+
+  if (seekPastAd && video && Number.isFinite(video.duration) && video.duration > 0) {
+    video.currentTime = video.duration;
     return true;
   }
 

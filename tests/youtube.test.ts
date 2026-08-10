@@ -181,7 +181,7 @@ describe('skipPlayerAd', () => {
     expect(clicks).toBe(1);
   });
 
-  test('lets an unskippable ad play out instead of seeking past it', () => {
+  test('lets an unskippable ad play out when seeking is not opted into', () => {
     document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
     const video = document.querySelector<HTMLVideoElement>('video')!;
     Object.defineProperty(video, 'duration', { value: 12, configurable: true });
@@ -189,6 +189,37 @@ describe('skipPlayerAd', () => {
     expect(skipPlayerAd()).toBe(false);
     expect(video.currentTime).toBe(0);
     expect(video.muted).toBe(true);
+  });
+
+  test('seeks past an unskippable ad when opted in', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
+    const video = document.querySelector<HTMLVideoElement>('video')!;
+    Object.defineProperty(video, 'duration', { value: 12, configurable: true });
+
+    expect(skipPlayerAd(document, true)).toBe(true);
+    expect(video.currentTime).toBe(12);
+  });
+
+  test('does not seek while the ad duration is still unknown', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
+    const video = document.querySelector<HTMLVideoElement>('video')!;
+    Object.defineProperty(video, 'duration', { value: NaN, configurable: true });
+
+    expect(skipPlayerAd(document, true)).toBe(false);
+    expect(video.currentTime).toBe(0);
+  });
+
+  test('mutes the player video, not a stray one earlier in the document', () => {
+    document.body.innerHTML = `
+      <video id="decoy"></video>
+      <div id="movie_player" class="ad-showing">
+        <video id="player" class="html5-main-video"></video>
+      </div>`;
+
+    skipPlayerAd();
+
+    expect(document.querySelector<HTMLVideoElement>('#player')!.muted).toBe(true);
+    expect(document.querySelector<HTMLVideoElement>('#decoy')!.muted).toBe(false);
   });
 
   test('mutes the ad and restores the sound state afterwards', () => {
