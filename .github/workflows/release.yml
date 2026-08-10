@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # Ship nothing that fails the same checks used locally.
+      - run: bun test
+      - run: bun run compile
+
+      - run: bun run zip
+      - run: bun run zip:firefox
+
+      # Firefox also emits a -sources.zip, which AMO requires for review.
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: .output/*.zip
