@@ -26,7 +26,10 @@ jobs:
       - run: bun run zip
       - run: bun run zip:firefox
 
-      # Firefox also emits a -sources.zip, which AMO requires for review.
+      # Firefox also emits a -sources.zip; it is only needed for an AMO review
+      # submission, so it stays out of the release.
       - uses: softprops/action-gh-release@v2
         with:
-          files: .output/*.zip
+          files: |
+            .output/*-chrome.zip
+            .output/*-firefox.zip
