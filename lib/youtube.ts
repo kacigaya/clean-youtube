@@ -126,6 +126,25 @@ export function dismissUpsells(root: ParentNode = document) {
  * media element so a replaced player starts from that player's own state. */
 const mutedBeforeAd = new WeakMap<HTMLVideoElement, boolean>();
 
+function getPlayerVideo(root: ParentNode): HTMLVideoElement | null {
+  // Two calls, not one selector list: a list matches in document order, so a
+  // stray <video> ahead of the player would win over the real one.
+  return (
+    root.querySelector<HTMLVideoElement>('video.html5-main-video') ??
+    root.querySelector<HTMLVideoElement>('video')
+  );
+}
+
+/** Restore a player muted by skipPlayerAd, including when blocking stops mid-ad. */
+export function restorePlayerMute(root: ParentNode = document) {
+  const video = getPlayerVideo(root);
+  if (!video || !mutedBeforeAd.has(video)) return false;
+
+  video.muted = mutedBeforeAd.get(video)!;
+  mutedBeforeAd.delete(video);
+  return true;
+}
+
 /**
  * Get through the ad currently playing: mute it, and click skip if YouTube
  * offers the button.
@@ -138,17 +157,10 @@ const mutedBeforeAd = new WeakMap<HTMLVideoElement, boolean>();
  * runs no such enforcement today, so callers there opt in.
  */
 export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
-  // Two calls, not one selector list: a list matches in document order, so a
-  // stray <video> ahead of the player would win over the real one.
-  const video =
-    root.querySelector<HTMLVideoElement>('video.html5-main-video') ??
-    root.querySelector<HTMLVideoElement>('video');
+  const video = getPlayerVideo(root);
 
   if (!root.querySelector('.ad-showing, .ytp-ad-player-overlay')) {
-    if (video && mutedBeforeAd.has(video)) {
-      video.muted = mutedBeforeAd.get(video)!;
-      mutedBeforeAd.delete(video);
-    }
+    restorePlayerMute(root);
     return false;
   }
 

@@ -4,6 +4,7 @@ import {
   buildCss,
   dismissUpsells,
   hidePremiumGuideEntries,
+  restorePlayerMute,
   skipPlayerAd,
 } from '@/lib/youtube';
 
@@ -247,5 +248,17 @@ describe('skipPlayerAd', () => {
     skipPlayerAd();
 
     expect(video.muted).toBe(true);
+  });
+
+  test('restores sound when ad blocking stops mid-ad', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
+    const video = document.querySelector<HTMLVideoElement>('video')!;
+
+    skipPlayerAd();
+    expect(video.muted).toBe(true);
+
+    expect(restorePlayerMute()).toBe(true);
+    expect(video.muted).toBe(false);
+    expect(restorePlayerMute()).toBe(false);
   });
 });

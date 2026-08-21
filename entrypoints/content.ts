@@ -1,5 +1,11 @@
 import { DEFAULT_SETTINGS, getSettings, settingsItem, type Settings, withDefaults } from '@/lib/settings';
-import { buildCss, dismissUpsells, hidePremiumGuideEntries, skipPlayerAd } from '@/lib/youtube';
+import {
+  buildCss,
+  dismissUpsells,
+  hidePremiumGuideEntries,
+  restorePlayerMute,
+  skipPlayerAd,
+} from '@/lib/youtube';
 
 export default defineContentScript({
   matches: ['*://www.youtube.com/*', '*://music.youtube.com/*'],
@@ -32,7 +38,9 @@ export default defineContentScript({
     sweep();
 
     settingsItem.watch((value) => {
-      settings = withDefaults(value);
+      const nextSettings = withDefaults(value);
+      if (settings.blockAds && !nextSettings.blockAds) restorePlayerMute();
+      settings = nextSettings;
       applyCss();
       sweep();
     });
@@ -44,6 +52,7 @@ export default defineContentScript({
     ctx.onInvalidated(() => {
       observer.disconnect();
       style.remove();
+      restorePlayerMute();
     });
 
     // youtube.com raises the "ad blockers violate our ToS" wall when an ad is
