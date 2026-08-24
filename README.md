@@ -1,14 +1,20 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="Logo" width="200">
+  <img src="assets/logo.svg" alt="Clean YouTube logo" width="140">
 </p>
 
 <h1 align="center">Clean YouTube</h1>
 
 <p align="center">
-   <strong>Browser extension that cleans up desktop YouTube and YouTube Music: no ads, Shorts discovery UI,
-   Premium ads, or Premium sidebar entry.</strong><br>
-   <em>Built with [WXT](https://wxt.dev) + React, UI from
-  [coss ui](https://coss.com/ui).</em>
+  <strong>Browser extension that cleans up desktop YouTube and YouTube Music.</strong><br>
+  <em>No ads, Shorts discovery UI, Premium ads, or Premium sidebar entry.</em>
+</p>
+
+<p align="center">
+  <a href="https://wxt.dev"><img alt="WXT 0.21" src="https://shieldcn.dev/badge/WXT-0.21-8b5cf6.svg?variant=secondary&amp;logo=googlechrome"></a>
+  <a href="https://react.dev"><img alt="React 19" src="https://shieldcn.dev/badge/React-19-61dafb.svg?variant=secondary&amp;logo=react&amp;logoColor=171717"></a>
+  <a href="https://bun.sh"><img alt="Bun 1.3" src="https://shieldcn.dev/badge/Bun-1.3-fbf0df.svg?variant=secondary&amp;logo=bun&amp;logoColor=171717"></a>
+  <a href="https://tailwindcss.com"><img alt="Tailwind CSS 4" src="https://shieldcn.dev/badge/Tailwind_CSS-4-06b6d4.svg?variant=secondary&amp;logo=tailwindcss"></a>
+  <a href="https://github.com/kacigaya/clean-youtube/blob/main/LICENSE"><img alt="MIT License" src="https://shieldcn.dev/github/license/kacigaya/clean-youtube.svg?variant=secondary"></a>
 </p>
 
 ## What it does
