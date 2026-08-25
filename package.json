@@ -2,7 +2,7 @@
   "name": "clean-youtube",
   "description": "Blocks ads and hides Shorts and Premium promotions on YouTube and YouTube Music.",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
