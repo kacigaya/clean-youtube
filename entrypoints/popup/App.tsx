@@ -16,6 +16,16 @@ const TOGGLES: { key: keyof Settings; title: string; description: string }[] = [
     description: 'Hide Shorts from feeds, search and navigation.',
   },
   {
+    key: 'hidePlayables',
+    title: 'Hide Playables',
+    description: 'Hide the games shelf and its sidebar link.',
+  },
+  {
+    key: 'hideMembership',
+    title: 'Hide memberships',
+    description: 'Hide channel Join buttons and membership offers.',
+  },
+  {
     key: 'blockUpsell',
     title: 'Hide Premium ads',
     description: 'Dismiss Premium promos, banners and dialogs.',

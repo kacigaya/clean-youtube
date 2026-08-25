@@ -23,14 +23,18 @@
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | **Block ads**          | Clears player ads on Music, mutes them on YouTube; hides feed and sidebar ad slots       |
 | **Hide Shorts**        | Hides Shorts navigation, shelves, cards and search results; direct `/shorts/` URLs work  |
-| **Hide Premium ads**   | Hides Premium-linked promos and banners, and closes Premium dialogs and their backdrop   |
+| **Hide Playables**     | Hides the Playables games shelf in the feed and its sidebar entry                        |
+| **Hide memberships**   | Hides channel Join buttons and the membership offer dialogs they open                   |
+| **Hide Premium ads**   | Hides every YouTube Music promo bar plus Premium-linked banners, and closes Premium dialogs and their backdrop |
 | **Hide Premium entry** | Removes Premium links from YouTube and YouTube Music sidebars                            |
 
-All four default to on and are toggled from the toolbar popup. Settings live in `sync` storage,
+All six default to on and are toggled from the toolbar popup. Settings live in `sync` storage,
 and the content script reacts to changes without a page reload.
 
 The Premium sidebar entry is matched by its link (`*premium*`, `*paid_memberships*`) **or** by its
-icon path, so it is found in any interface language.
+icon path, so it is found in any interface language. The Playables shelf is matched by the
+`ytd-mini-game-card-view-model` cards it contains rather than its heading, and Join buttons by their
+`/channel/<id>/join` endpoint rather than their label, for the same reason.
 
 ## Develop
 

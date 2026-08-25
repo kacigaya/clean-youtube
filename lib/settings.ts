@@ -5,6 +5,10 @@ export interface Settings {
   hidePremiumEntry: boolean;
   /** Hide Shorts discovery UI on YouTube while keeping direct URLs usable. */
   hideShorts: boolean;
+  /** Hide the Playables games shelf and its sidebar entry on YouTube. */
+  hidePlayables: boolean;
+  /** Hide channel membership Join buttons and the offers they open. */
+  hideMembership: boolean;
   /** Auto-dismiss Premium ads, dialogs and promo bars. */
   blockUpsell: boolean;
   /** Mute and skip player ads as they start, and hide feed and sidebar ad slots. */
@@ -14,6 +18,8 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   hidePremiumEntry: true,
   hideShorts: true,
+  hidePlayables: true,
+  hideMembership: true,
   blockUpsell: true,
   blockAds: true,
 };

@@ -11,6 +11,11 @@ const PREMIUM_LINK = [
 
 const SHORTS_LINK = 'a[href="/shorts"],a[href^="/shorts/"]';
 
+const PLAYABLES_LINK = 'a[href="/playables"],a[href^="/playables/"]';
+
+/** Channel membership endpoints are always `/channel/<id>/join`. */
+const MEMBERSHIP_LINK = 'a[href$="/join"]';
+
 /** Static rules per feature, injected as one stylesheet built from the enabled ones. */
 export const CSS: Record<keyof Settings, string> = {
   hidePremiumEntry: `
@@ -28,11 +33,33 @@ export const CSS: Record<keyof Settings, string> = {
     ytd-video-renderer:has(${SHORTS_LINK}),
     .ytLockupViewModelWrapper:has(${SHORTS_LINK}) { display: none !important; }
   `,
+  /**
+   * The shelf is matched by its game cards rather than its heading, which is
+   * localised ("Jeux integres YouTube", "YouTube Playables", ...).
+   */
+  hidePlayables: `
+    ytd-guide-entry-renderer:has(${PLAYABLES_LINK}),
+    ytd-mini-guide-entry-renderer:has(${PLAYABLES_LINK}),
+    ytd-rich-section-renderer:has(ytd-mini-game-card-view-model),
+    ytd-rich-item-renderer:has(ytd-mini-game-card-view-model),
+    ytd-mini-game-card-view-model { display: none !important; }
+  `,
+  /**
+   * Matched by the join endpoint, never by the button label. Three button
+   * wrappers because YouTube is mid-migration from `ytd-button-renderer` to the
+   * view-model elements, and both shapes are live depending on the surface.
+   */
+  hideMembership: `
+    ytd-button-renderer:has(${MEMBERSHIP_LINK}),
+    yt-button-view-model:has(${MEMBERSHIP_LINK}),
+    button-view-model:has(${MEMBERSHIP_LINK}),
+    ytd-popup-container tp-yt-paper-dialog:has(${MEMBERSHIP_LINK}) { display: none !important; }
+  `,
   blockUpsell: `
     ytd-rich-section-renderer:has(ytd-brand-video-singleton-renderer),
     ytd-rich-item-renderer:has(ytd-brand-video-singleton-renderer),
     ytd-brand-video-singleton-renderer,
-    ytmusic-mealbar-promo-renderer:has(${PREMIUM_LINK}),
+    ytmusic-mealbar-promo-renderer,
     ytd-mealbar-promo-renderer:has(${PREMIUM_LINK}),
     ytmusic-statement-banner-renderer:has(${PREMIUM_LINK}),
     ytd-statement-banner-renderer:has(${PREMIUM_LINK}),
@@ -92,11 +119,17 @@ export function dismissUpsells(root: ParentNode = document) {
   for (const promo of root.querySelectorAll(
     'ytmusic-mealbar-promo-renderer, ytd-mealbar-promo-renderer',
   )) {
-    if (!promo.querySelector(PREMIUM_LINK)) continue;
+    // Music mealbars are Premium upsells only, and most carry no Premium link at
+    // all — the offer sits on a plain button. On youtube.com the same element
+    // also carries product notices, so there it stays matched by the link.
+    if (promo.tagName !== 'YTMUSIC-MEALBAR-PROMO-RENDERER' && !promo.querySelector(PREMIUM_LINK)) {
+      continue;
+    }
     // A comma selector would return the wrapper first; the inner button is the real target.
     const dismiss =
-      promo.querySelector<HTMLElement>('#dismiss-button button') ??
-      promo.querySelector<HTMLElement>('#dismiss-button');
+      promo.querySelector<HTMLElement>(
+        '#dismiss-button button, .dismiss-button button, [dialog-dismiss] button',
+      ) ?? promo.querySelector<HTMLElement>('#dismiss-button, .dismiss-button, [dialog-dismiss]');
     if (dismiss) dismiss.click();
     else promo.remove();
     closed = true;

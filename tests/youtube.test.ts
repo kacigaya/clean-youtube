@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { Settings } from '@/lib/settings';
 import {
   CSS,
   buildCss,
@@ -11,18 +12,25 @@ import {
 const PREMIUM_ICON =
   'M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1Zm0 2a9 9 0 110 18.001A9 9 0 0112 3Z';
 
+/**
+ * Everything off but the named features, so a new setting cannot churn every
+ * case. Keys come from `CSS` rather than `DEFAULT_SETTINGS` because importing
+ * `lib/settings` would pull in WXT's `#imports`, which bun test cannot resolve.
+ */
+function only(...enabled: (keyof Settings)[]): Settings {
+  const keys = Object.keys(CSS) as (keyof Settings)[];
+  return Object.fromEntries(
+    keys.map((key) => [key, enabled.includes(key)]),
+  ) as unknown as Settings;
+}
+
 beforeEach(() => {
   document.body.innerHTML = '';
 });
 
 describe('buildCss', () => {
   test('only includes rules for enabled features', () => {
-    const css = buildCss({
-      hidePremiumEntry: true,
-      hideShorts: false,
-      blockUpsell: false,
-      blockAds: false,
-    });
+    const css = buildCss(only('hidePremiumEntry'));
     expect(css).toContain('ytmusic-guide-entry-renderer');
     expect(css).toContain('ytd-guide-entry-renderer');
     expect(css).not.toContain('ytd-reel-shelf-renderer');
@@ -31,12 +39,7 @@ describe('buildCss', () => {
   });
 
   test('includes YouTube ad and Shorts discovery selectors', () => {
-    const css = buildCss({
-      hidePremiumEntry: false,
-      hideShorts: true,
-      blockUpsell: false,
-      blockAds: true,
-    });
+    const css = buildCss(only('hideShorts', 'blockAds'));
     expect(css).toContain('ytd-ad-slot-renderer');
     expect(css).toContain('ytd-rich-item-renderer:has(ytd-ad-slot-renderer)');
     expect(css).toContain('ytd-rich-item-renderer:has(ytd-feed-nudge-renderer)');
@@ -46,14 +49,21 @@ describe('buildCss', () => {
   });
 
   test('is empty when everything is off', () => {
-    expect(
-      buildCss({
-        hidePremiumEntry: false,
-        hideShorts: false,
-        blockUpsell: false,
-        blockAds: false,
-      }).trim(),
-    ).toBe('');
+    expect(buildCss(only()).trim()).toBe('');
+  });
+
+  test('Playables rules are independent of the Shorts toggle', () => {
+    const css = buildCss(only('hidePlayables'));
+    expect(css).toContain('ytd-rich-section-renderer:has(ytd-mini-game-card-view-model)');
+    expect(css).toContain('a[href^="/playables/"]');
+    expect(css).not.toContain('ytd-reel-shelf-renderer');
+  });
+
+  test('membership rules match the join endpoint, not a label', () => {
+    const css = buildCss(only('hideMembership'));
+    expect(css).toContain('ytd-button-renderer:has(a[href$="/join"])');
+    expect(css).toContain('button-view-model:has(a[href$="/join"])');
+    expect(css).not.toContain('ytd-reel-shelf-renderer');
   });
 
   test('Premium banner rule requires a Premium link', () => {
@@ -125,6 +135,19 @@ describe('dismissUpsells', () => {
     expect(dismissUpsells()).toBe(true);
     expect(clicks).toBe(1);
     expect(document.querySelector('ytmusic-mealbar-promo-renderer')).not.toBeNull();
+  });
+
+  test('dismisses a music promo whose offer is a button, not a Premium link', () => {
+    document.body.innerHTML = `
+      <ytmusic-mealbar-promo-renderer dialog="true">
+        <div class="messages">Abonnement etudiant YouTube Music Premium</div>
+        <yt-button-renderer class="dismiss-button" dialog-dismiss=""><button>Non, merci</button></yt-button-renderer>
+      </ytmusic-mealbar-promo-renderer>`;
+    let clicks = 0;
+    document.querySelector('.dismiss-button button')!.addEventListener('click', () => clicks++);
+
+    expect(dismissUpsells()).toBe(true);
+    expect(clicks).toBe(1);
   });
 
   test('leaves unrelated promo bars alone', () => {
