@@ -28,7 +28,7 @@ jobs:
 
       # Named explicitly rather than globbed, so re-enabling zip.zipSources in
       # wxt.config.ts cannot quietly start publishing a sources zip.
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             .output/*-chrome.zip
