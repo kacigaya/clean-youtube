@@ -139,13 +139,25 @@ describe('dismissUpsells', () => {
 
   test('dismisses a music promo whose offer is a button, not a Premium link', () => {
     document.body.innerHTML = `
-      <ytmusic-mealbar-promo-renderer dialog="true">
-        <div class="messages">Abonnement etudiant YouTube Music Premium</div>
-        <yt-button-renderer class="dismiss-button" dialog-dismiss=""><button>Non, merci</button></yt-button-renderer>
-      </ytmusic-mealbar-promo-renderer>`;
+      <ytmusic-popup-container>
+        <ytmusic-mealbar-promo-renderer dialog="true" tabindex="-1">
+          <div class="messages">
+            <yt-formatted-string>Profitez de musique sans pub à prix réduit avec l'abonnement étudiant YouTube Music Premium</yt-formatted-string>
+          </div>
+          <div class="button-wrapper">
+            <yt-button-renderer class="dismiss-button" dialog-dismiss="">
+              <yt-button-shape><button aria-label="Non, merci">Non, merci</button></yt-button-shape>
+            </yt-button-renderer>
+            <yt-button-renderer class="action-button" dialog-confirm="">
+              <yt-button-shape><button>1 mois d’essai</button></yt-button-shape>
+            </yt-button-renderer>
+          </div>
+        </ytmusic-mealbar-promo-renderer>
+      </ytmusic-popup-container>`;
     let clicks = 0;
     document.querySelector('.dismiss-button button')!.addEventListener('click', () => clicks++);
 
+    expect(buildCss(only('blockUpsell'))).toContain('ytmusic-mealbar-promo-renderer,');
     expect(dismissUpsells()).toBe(true);
     expect(clicks).toBe(1);
   });
