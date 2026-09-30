@@ -3,18 +3,36 @@ import type { Settings } from './settings';
 /** Locale-independent marker: `d` prefix of the Premium entry icon in the sidebar. */
 const PREMIUM_ICON_PATH = 'M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11';
 
-const PREMIUM_LINK = [
-  'a[href*="premium" i]',
-  'a[href*="paid_memberships" i]',
-  'a[href*="musicpremium" i]',
-].join(',');
+const YOUTUBE_ORIGINS = ['https://www.youtube.com', 'https://music.youtube.com', 'https://youtube.com'];
+
+function routeLinks(paths: string[]): string {
+  return paths.flatMap((path) => ['', ...YOUTUBE_ORIGINS].flatMap((origin) => {
+    const href = `${origin}${path}`;
+    return [`a[href="${href}"]`, ...['/', '?', '#'].map((suffix) => `a[href^="${href}${suffix}"]`)];
+  })).join(',');
+}
+
+const PREMIUM_LINK = routeLinks(['/premium', '/paid_memberships', '/musicpremium']);
 
 const SHORTS_LINK = 'a[href="/shorts"],a[href^="/shorts/"]';
 
 const PLAYABLES_LINK = 'a[href="/playables"],a[href^="/playables/"]';
 
-/** Channel membership endpoints are always `/channel/<id>/join`. */
-const MEMBERSHIP_LINK = 'a[href$="/join"]';
+function linksTo(root: ParentNode, matches: (path: string) => boolean): boolean {
+  return Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href]')).some((link) => {
+    try {
+      const url = new URL(link.getAttribute('href')!, 'https://www.youtube.com');
+      return YOUTUBE_ORIGINS.includes(url.origin) && matches(url.pathname);
+    } catch {
+      return false;
+    }
+  });
+}
+
+const hasPremiumLink = (root: ParentNode) => linksTo(root,
+  (path) => /^\/(?:premium|paid_memberships|musicpremium)(?:\/|$)/.test(path));
+const hasMembershipLink = (root: ParentNode) => linksTo(root,
+  (path) => /^\/channel\/[^/]+\/join\/?$/.test(path));
 
 /** Static rules per feature, injected as one stylesheet built from the enabled ones. */
 export const CSS: Record<keyof Settings, string> = {
@@ -50,21 +68,16 @@ export const CSS: Record<keyof Settings, string> = {
    * view-model elements, and both shapes are live depending on the surface.
    */
   hideMembership: `
-    ytd-button-renderer:has(${MEMBERSHIP_LINK}),
-    yt-button-view-model:has(${MEMBERSHIP_LINK}),
-    button-view-model:has(${MEMBERSHIP_LINK}),
-    ytd-popup-container tp-yt-paper-dialog:has(${MEMBERSHIP_LINK}) { display: none !important; }
+    [data-clean-youtube-membership-hidden] { display: none !important; }
   `,
   blockUpsell: `
     ytd-rich-section-renderer:has(ytd-brand-video-singleton-renderer),
     ytd-rich-item-renderer:has(ytd-brand-video-singleton-renderer),
     ytd-brand-video-singleton-renderer,
-    ytmusic-mealbar-promo-renderer,
-    ytd-mealbar-promo-renderer:has(${PREMIUM_LINK}),
+    ytmusic-mealbar-promo-renderer:not([dialog]):not(tp-yt-paper-dialog *),
+    ytd-mealbar-promo-renderer:not([dialog]):not(tp-yt-paper-dialog *):has(${PREMIUM_LINK}),
     ytmusic-statement-banner-renderer:has(${PREMIUM_LINK}),
-    ytd-statement-banner-renderer:has(${PREMIUM_LINK}),
-    ytmusic-popup-container tp-yt-paper-dialog:has(${PREMIUM_LINK}),
-    ytd-popup-container tp-yt-paper-dialog:has(${PREMIUM_LINK}) { display: none !important; }
+    ytd-statement-banner-renderer:has(${PREMIUM_LINK}) { display: none !important; }
   `,
   /**
    * Feed and sidebar ad containers only. Nothing inside the player is hidden:
@@ -104,17 +117,62 @@ export function hidePremiumGuideEntries(root: ParentNode = document) {
   for (const entry of root.querySelectorAll<HTMLElement>(
     'ytmusic-guide-entry-renderer, ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer',
   )) {
-    if (entry.dataset.cleanYoutubeHidden) continue;
     const isPremium =
-      entry.querySelector(PREMIUM_LINK) != null ||
+      hasPremiumLink(entry) ||
       entry.querySelector(`svg path[d^="${PREMIUM_ICON_PATH}"]`) != null;
     if (isPremium) entry.dataset.cleanYoutubeHidden = '1';
+    else delete entry.dataset.cleanYoutubeHidden;
   }
 }
 
-/** Close Premium promos. CSS hides them; this releases the modal state they leave behind. */
+export function clearPremiumGuideEntries(root: ParentNode = document) {
+  for (const entry of root.querySelectorAll<HTMLElement>('[data-clean-youtube-hidden]')) {
+    delete entry.dataset.cleanYoutubeHidden;
+  }
+}
+
+export function hideMembershipButtons(root: ParentNode = document) {
+  for (const button of root.querySelectorAll<HTMLElement>(
+    'ytd-button-renderer, yt-button-view-model, button-view-model',
+  )) {
+    if (hasMembershipLink(button)) button.dataset.cleanYoutubeMembershipHidden = '1';
+    else delete button.dataset.cleanYoutubeMembershipHidden;
+  }
+}
+
+export function clearMembershipButtons(root: ParentNode = document) {
+  for (const button of root.querySelectorAll<HTMLElement>('[data-clean-youtube-membership-hidden]')) {
+    delete button.dataset.cleanYoutubeMembershipHidden;
+  }
+}
+
+function isEnabled(element: HTMLElement): boolean {
+  return !element.closest('[disabled], [aria-disabled="true"]') && !element.matches(':disabled');
+}
+
+function clickDismiss(root: ParentNode): boolean {
+  // Prefer the real button; clicking a wrapper can miss its page-owned handler.
+  const dismiss = root.querySelector<HTMLElement>(
+    '#dismiss-button button, .dismiss-button button, [dialog-dismiss] button, #close-button button, button[dialog-dismiss], button#dismiss-button, button#close-button',
+  ) ?? root.querySelector<HTMLElement>('#dismiss-button, .dismiss-button, [dialog-dismiss], #close-button');
+  if (!dismiss || !isEnabled(dismiss)) return false;
+  dismiss.click();
+  return true;
+}
+
+function dismissDialogs(root: ParentNode, matches: (dialog: ParentNode) => boolean): boolean {
+  let dismissed = false;
+  for (const dialog of root.querySelectorAll<HTMLElement>(
+    'ytmusic-popup-container tp-yt-paper-dialog[opened], ytd-popup-container tp-yt-paper-dialog[opened]',
+  )) {
+    if (matches(dialog)) dismissed = clickDismiss(dialog) || dismissed;
+  }
+  return dismissed;
+}
+
+/** Native clicks reach page listeners from an isolated content-script world. */
 export function dismissUpsells(root: ParentNode = document) {
-  let closed = false;
+  let dismissed = false;
 
   for (const promo of root.querySelectorAll(
     'ytmusic-mealbar-promo-renderer, ytd-mealbar-promo-renderer',
@@ -122,42 +180,21 @@ export function dismissUpsells(root: ParentNode = document) {
     // Music mealbars are Premium upsells only, and most carry no Premium link at
     // all — the offer sits on a plain button. On youtube.com the same element
     // also carries product notices, so there it stays matched by the link.
-    if (promo.tagName !== 'YTMUSIC-MEALBAR-PROMO-RENDERER' && !promo.querySelector(PREMIUM_LINK)) {
+    if (promo.tagName !== 'YTMUSIC-MEALBAR-PROMO-RENDERER' && !hasPremiumLink(promo)) {
       continue;
     }
-    // A comma selector would return the wrapper first; the inner button is the real target.
-    const dismiss =
-      promo.querySelector<HTMLElement>(
-        '#dismiss-button button, .dismiss-button button, [dialog-dismiss] button',
-      ) ?? promo.querySelector<HTMLElement>('#dismiss-button, .dismiss-button, [dialog-dismiss]');
-    if (dismiss) dismiss.click();
-    else promo.remove();
-    closed = true;
+    dismissed = clickDismiss(promo) || dismissed;
   }
-
-  for (const dialog of root.querySelectorAll<HTMLElement & { close?: () => void }>(
-    'ytmusic-popup-container tp-yt-paper-dialog[opened], ytd-popup-container tp-yt-paper-dialog[opened]',
-  )) {
-    if (!dialog.querySelector(PREMIUM_LINK)) continue;
-    dialog.close?.();
-    dialog.remove();
-    closed = true;
-  }
-
-  // Polymer leaves the backdrop (and a scroll lock) behind when a dialog is torn down.
-  if (closed) {
-    for (const backdrop of root.querySelectorAll('tp-yt-iron-overlay-backdrop.opened')) {
-      backdrop.remove();
-    }
-    document.documentElement.style.removeProperty('overflow');
-  }
-
-  return closed;
+  return dismissDialogs(root, hasPremiumLink) || dismissed;
 }
 
-/** Muted state from before the current ad, restored once it is over. Keyed on the
- * media element so a replaced player starts from that player's own state. */
-const mutedBeforeAd = new WeakMap<HTMLVideoElement, boolean>();
+export function dismissMembershipDialogs(root: ParentNode = document) {
+  return dismissDialogs(root, hasMembershipLink);
+}
+
+/** Keep only the current ad's video so replacement and teardown can restore
+ * even a detached player. Old entries are released on the next poll. */
+const mutedBeforeAd = new Map<HTMLVideoElement, boolean>();
 
 function getPlayerVideo(root: ParentNode): HTMLVideoElement | null {
   // Two calls, not one selector list: a list matches in document order, so a
@@ -170,12 +207,14 @@ function getPlayerVideo(root: ParentNode): HTMLVideoElement | null {
 
 /** Restore a player muted by skipPlayerAd, including when blocking stops mid-ad. */
 export function restorePlayerMute(root: ParentNode = document) {
-  const video = getPlayerVideo(root);
-  if (!video || !mutedBeforeAd.has(video)) return false;
-
-  video.muted = mutedBeforeAd.get(video)!;
-  mutedBeforeAd.delete(video);
-  return true;
+  let restored = false;
+  for (const [video, muted] of mutedBeforeAd) {
+    if (root !== document && !root.contains(video)) continue;
+    video.muted = muted;
+    mutedBeforeAd.delete(video);
+    restored = true;
+  }
+  return restored;
 }
 
 /**
@@ -190,27 +229,43 @@ export function restorePlayerMute(root: ParentNode = document) {
  * runs no such enforcement today, so callers there opt in.
  */
 export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
-  const video = getPlayerVideo(root);
-
-  if (!root.querySelector('.ad-showing, .ytp-ad-player-overlay')) {
+  const player = root.querySelector<HTMLElement>('#movie_player.ad-showing, #player.ad-showing');
+  const video = player ? getPlayerVideo(player) : null;
+  // Overlay nodes and inactive skip controls can remain after an ad ends.
+  if (!video || !player) {
     restorePlayerMute(root);
     return false;
   }
 
-  if (video && !mutedBeforeAd.has(video)) {
-    mutedBeforeAd.set(video, video.muted);
-    video.muted = true;
+  for (const [previous, muted] of mutedBeforeAd) {
+    if (previous !== video) {
+      previous.muted = muted;
+      mutedBeforeAd.delete(previous);
+    }
   }
 
-  const skip = root.querySelector<HTMLElement>(
+  if (!mutedBeforeAd.has(video)) {
+    mutedBeforeAd.set(video, video.muted);
+  }
+  video.muted = true;
+
+  const skip = Array.from(player.querySelectorAll<HTMLElement>(
     '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button',
-  );
+  )).find((button) => {
+    if (!isEnabled(button) || button.closest('[hidden], [aria-hidden="true"]')) return false;
+    for (let element: HTMLElement | null = button; element; element = element.parentElement) {
+      const style = getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      if (element === player) break;
+    }
+    return true;
+  });
   if (skip) {
     skip.click();
     return true;
   }
 
-  if (seekPastAd && video && Number.isFinite(video.duration) && video.duration > 0) {
+  if (seekPastAd && Number.isFinite(video.duration) && video.duration > 0) {
     video.currentTime = video.duration;
     return true;
   }
