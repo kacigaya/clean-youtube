@@ -4,6 +4,9 @@ import {
   CSS,
   buildCss,
   dismissUpsells,
+  dismissMembershipDialogs,
+  clearPremiumGuideEntries,
+  hideMembershipButtons,
   hidePremiumGuideEntries,
   restorePlayerMute,
   skipPlayerAd,
@@ -14,8 +17,7 @@ const PREMIUM_ICON =
 
 /**
  * Everything off but the named features, so a new setting cannot churn every
- * case. Keys come from `CSS` rather than `DEFAULT_SETTINGS` because importing
- * `lib/settings` would pull in WXT's `#imports`, which bun test cannot resolve.
+ * case. Keys come from `CSS` so the feature tests follow the available rules.
  */
 function only(...enabled: (keyof Settings)[]): Settings {
   const keys = Object.keys(CSS) as (keyof Settings)[];
@@ -25,7 +27,9 @@ function only(...enabled: (keyof Settings)[]): Settings {
 }
 
 beforeEach(() => {
+  restorePlayerMute();
   document.body.innerHTML = '';
+  document.documentElement.style.removeProperty('overflow');
 });
 
 describe('buildCss', () => {
@@ -61,8 +65,8 @@ describe('buildCss', () => {
 
   test('membership rules match the join endpoint, not a label', () => {
     const css = buildCss(only('hideMembership'));
-    expect(css).toContain('ytd-button-renderer:has(a[href$="/join"])');
-    expect(css).toContain('button-view-model:has(a[href$="/join"])');
+    expect(css).toContain('[data-clean-youtube-membership-hidden]');
+    expect(css).not.toContain('tp-yt-paper-dialog');
     expect(css).not.toContain('ytd-reel-shelf-renderer');
   });
 
@@ -71,7 +75,7 @@ describe('buildCss', () => {
       'ytd-rich-section-renderer:has(ytd-brand-video-singleton-renderer)',
     );
     expect(CSS.blockUpsell).toContain(
-      'ytd-statement-banner-renderer:has(a[href*="premium" i]',
+      'ytd-statement-banner-renderer:has(a[href="/premium"]',
     );
     expect(CSS.blockUpsell).not.toMatch(/ytd-statement-banner-renderer,|ytd-statement-banner-renderer\s*\{/);
   });
@@ -157,7 +161,7 @@ describe('dismissUpsells', () => {
     let clicks = 0;
     document.querySelector('.dismiss-button button')!.addEventListener('click', () => clicks++);
 
-    expect(buildCss(only('blockUpsell'))).toContain('ytmusic-mealbar-promo-renderer,');
+    expect(buildCss(only('blockUpsell'))).toContain('ytmusic-mealbar-promo-renderer:not([dialog])');
     expect(dismissUpsells()).toBe(true);
     expect(clicks).toBe(1);
   });
@@ -173,18 +177,22 @@ describe('dismissUpsells', () => {
     expect(document.querySelector('ytd-mealbar-promo-renderer')).not.toBeNull();
   });
 
-  test('removes a Premium dialog and its leftover backdrop', () => {
+  test('uses the Premium dialog dismiss control and leaves cleanup to the page', () => {
     document.body.innerHTML = `
       <ytd-popup-container>
         <tp-yt-paper-dialog opened>
           <a href="https://www.youtube.com/premium">Try Premium</a>
+          <button dialog-dismiss>Close</button>
         </tp-yt-paper-dialog>
       </ytd-popup-container>
       <tp-yt-iron-overlay-backdrop class="opened"></tp-yt-iron-overlay-backdrop>`;
 
+    let clicks = 0;
+    document.querySelector('button')!.addEventListener('click', () => clicks++);
     expect(dismissUpsells()).toBe(true);
-    expect(document.querySelector('tp-yt-paper-dialog')).toBeNull();
-    expect(document.querySelector('tp-yt-iron-overlay-backdrop')).toBeNull();
+    expect(clicks).toBe(1);
+    expect(document.querySelector('tp-yt-paper-dialog')).not.toBeNull();
+    expect(document.querySelector('tp-yt-iron-overlay-backdrop')).not.toBeNull();
   });
 
   test('leaves unrelated dialogs open', () => {
@@ -295,5 +303,115 @@ describe('skipPlayerAd', () => {
     expect(restorePlayerMute()).toBe(true);
     expect(video.muted).toBe(false);
     expect(restorePlayerMute()).toBe(false);
+  });
+});
+
+describe('regressions', () => {
+  test('a hidden overlay cannot mute or seek ordinary Music content', () => {
+    document.body.innerHTML = '<div id="movie_player"><video class="html5-main-video"></video><div class="ytp-ad-player-overlay" hidden></div></div>';
+    const video = document.querySelector('video')!;
+    Object.defineProperty(video, 'duration', { value: 180 });
+    expect(skipPlayerAd(document, true)).toBe(false);
+    expect(video.muted).toBe(false);
+    expect(video.currentTime).toBe(0);
+  });
+
+  test('a different active player cannot affect an earlier normal video or skip button', () => {
+    document.body.innerHTML = '<div id="player"><video id="content" class="html5-main-video"></video><button class="ytp-ad-skip-button">stale</button></div><div id="movie_player" class="ad-showing"><video id="ad"></video></div>';
+    let clicks = 0;
+    document.querySelector('button')!.addEventListener('click', () => clicks++);
+    skipPlayerAd();
+    expect(document.querySelector<HTMLVideoElement>('#content')!.muted).toBe(false);
+    expect(document.querySelector<HTMLVideoElement>('#ad')!.muted).toBe(true);
+    expect(clicks).toBe(0);
+  });
+
+  test('muting is maintained and detached players are restored on replacement', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div>';
+    const first = document.querySelector('video')!;
+    skipPlayerAd();
+    first.muted = false;
+    skipPlayerAd();
+    expect(first.muted).toBe(true);
+    const next = document.createElement('video');
+    first.replaceWith(next);
+    skipPlayerAd();
+    expect(first.muted).toBe(false);
+    expect(next.muted).toBe(true);
+    restorePlayerMute();
+    expect(next.muted).toBe(false);
+  });
+
+  test('disabled and ancestor-hidden skip controls do not prevent the Music fallback', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video><button class="ytp-ad-skip-button" disabled>later</button><div style="display:none"><button class="ytp-ad-skip-button-modern">stale</button></div></div>';
+    const video = document.querySelector('video')!;
+    Object.defineProperty(video, 'duration', { value: 12 });
+    expect(skipPlayerAd(document, true)).toBe(true);
+    expect(video.currentTime).toBe(12);
+  });
+
+  test('an enabled modern skip control is selected after an unavailable legacy one', () => {
+    document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video><button class="ytp-ad-skip-button" disabled>later</button><button class="ytp-ad-skip-button-modern">skip</button></div>';
+    let clicks = 0;
+    document.querySelector('.ytp-ad-skip-button-modern')!.addEventListener('click', () => clicks++);
+    expect(skipPlayerAd()).toBe(true);
+    expect(clicks).toBe(1);
+  });
+
+  test('Premium matching rejects handles, query strings, external hosts and route prefixes', () => {
+    document.body.innerHTML = ['/\u0040premium_news', '/watch?v=premium', 'https://example.com/premium', '/premium-channel'].map((href) => `<ytd-guide-entry-renderer><a href="${href}">Other</a></ytd-guide-entry-renderer>`).join('');
+    hidePremiumGuideEntries();
+    expect(document.querySelector('[data-clean-youtube-hidden]')).toBeNull();
+  });
+
+  test('Premium route query strings match and recycled entries lose their markers', () => {
+    document.body.innerHTML = '<ytd-guide-entry-renderer><a href="https://www.youtube.com/premium?source=guide">Premium</a></ytd-guide-entry-renderer>';
+    const entry = document.querySelector<HTMLElement>('ytd-guide-entry-renderer')!;
+    hidePremiumGuideEntries();
+    expect(entry.dataset.cleanYoutubeHidden).toBe('1');
+    document.querySelector('a')!.setAttribute('href', '/feed/library');
+    hidePremiumGuideEntries();
+    expect(entry.dataset.cleanYoutubeHidden).toBeUndefined();
+    entry.dataset.cleanYoutubeHidden = '1';
+    clearPremiumGuideEntries();
+    expect(entry.dataset.cleanYoutubeHidden).toBeUndefined();
+  });
+
+  test('dismissing a mealbar preserves unrelated modal backdrops and scroll locks', () => {
+    document.body.innerHTML = '<ytmusic-mealbar-promo-renderer><button class="dismiss-button">dismiss</button></ytmusic-mealbar-promo-renderer><ytd-popup-container><tp-yt-paper-dialog opened>Playlist</tp-yt-paper-dialog></ytd-popup-container><tp-yt-iron-overlay-backdrop class="opened"></tp-yt-iron-overlay-backdrop>';
+    document.documentElement.style.overflow = 'hidden';
+    expect(dismissUpsells()).toBe(true);
+    expect(document.querySelector('tp-yt-paper-dialog[opened]')).not.toBeNull();
+    expect(document.querySelector('tp-yt-iron-overlay-backdrop.opened')).not.toBeNull();
+    expect(document.documentElement.style.overflow).toBe('hidden');
+  });
+
+  test('dialogs without a usable native dismiss control remain intact', () => {
+    document.body.innerHTML = '<ytd-popup-container><tp-yt-paper-dialog opened><a href="/premium">Premium</a><button dialog-dismiss disabled>Close</button></tp-yt-paper-dialog></ytd-popup-container>';
+    expect(dismissUpsells()).toBe(false);
+    expect(document.querySelector('tp-yt-paper-dialog[opened]')).not.toBeNull();
+    expect(CSS.blockUpsell).not.toContain('tp-yt-paper-dialog:has(');
+  });
+
+  test('membership dismissal validates the destination and uses its native button', () => {
+    document.body.innerHTML = '<ytd-popup-container><tp-yt-paper-dialog opened><a href="/channel/abc/join?source=offer">Join</a><button dialog-dismiss>Close</button></tp-yt-paper-dialog></ytd-popup-container>';
+    const dialog = document.querySelector('tp-yt-paper-dialog')!;
+    document.querySelector('button')!.addEventListener('click', () => dialog.removeAttribute('opened'));
+    expect(dismissMembershipDialogs()).toBe(true);
+    expect(dialog.hasAttribute('opened')).toBe(false);
+    dialog.setAttribute('opened', '');
+    document.querySelector('a')!.setAttribute('href', 'https://example.com/channel/abc/join');
+    expect(dismissMembershipDialogs()).toBe(false);
+    expect(dialog.hasAttribute('opened')).toBe(true);
+  });
+
+  test('membership button marking rejects external hosts and lookalike routes', () => {
+    document.body.innerHTML = '<ytd-button-renderer id="join"><a href="/channel/abc/join?source=button">Join</a></ytd-button-renderer><ytd-button-renderer id="external"><a href="https://example.com/channel/abc/join">Other</a></ytd-button-renderer><ytd-button-renderer id="lookalike"><a href="/channel/abc/joined">Other</a></ytd-button-renderer>';
+    hideMembershipButtons();
+    expect(document.querySelector('[data-clean-youtube-membership-hidden]')?.id).toBe('join');
+    expect(document.querySelectorAll('[data-clean-youtube-membership-hidden]')).toHaveLength(1);
+    document.querySelector('#join a')!.setAttribute('href', '/feed/library');
+    hideMembershipButtons();
+    expect(document.querySelector('[data-clean-youtube-membership-hidden]')).toBeNull();
   });
 });

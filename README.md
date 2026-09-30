@@ -24,14 +24,25 @@
 | **Block ads**          | Clears player ads on Music, mutes them on YouTube; hides feed and sidebar ad slots       |
 | **Hide Shorts**        | Hides Shorts navigation, shelves, cards and search results; direct `/shorts/` URLs work  |
 | **Hide Playables**     | Hides the Playables games shelf in the feed and its sidebar entry                        |
-| **Hide memberships**   | Hides channel Join buttons and the membership offer dialogs they open                   |
-| **Hide Premium ads**   | Hides every YouTube Music promo bar plus Premium-linked banners, and closes Premium dialogs and their backdrop |
+| **Hide memberships**   | Hides channel Join buttons and dismisses membership offers through their Close control |
+| **Hide Premium ads**   | Hides nonmodal YouTube Music promo bars and Premium-linked banners; dismisses Premium dialogs through their Close control |
 | **Hide Premium entry** | Removes Premium links from YouTube and YouTube Music sidebars                            |
 
 All six default to on and are toggled from the toolbar popup. Settings live in `sync` storage,
-and the content script reacts to changes without a page reload.
+one key per toggle, and both the popup and content script react to changes without a reload.
+Existing preferences remain readable from the previous `settings` object until that toggle is
+changed. Changes made by this version are not written back to the old object, so downgrading
+does not retain newly changed preferences.
 
-The Premium sidebar entry is matched by its link (`*premium*`, `*paid_memberships*`) **or** by its
+Failed reads show a Retry action in the popup; content scripts retain their current settings
+and recover on the next storage update. Failed saves leave the confirmed switch state intact.
+
+Modal dismissal uses the page's native Close control so its focus and scroll state are released
+by YouTube. A modal without a usable Close control remains visible. The extension does not remove
+shared backdrops or document scroll locks.
+
+The Premium sidebar entry is matched by a YouTube Premium route (`/premium`, `/musicpremium`,
+`/paid_memberships`) **or** by its
 icon path, so it is found in any interface language. The Playables shelf is matched by the
 `ytd-mini-game-card-view-model` cards it contains rather than its heading, and Join buttons by their
 `/channel/<id>/join` endpoint rather than their label, for the same reason.
@@ -41,19 +52,38 @@ icon path, so it is found in any interface language. The Playables shelf is matc
 ```bash
 bun install
 bun run dev          # Chrome; `bun run dev:firefox` for Firefox
-bun test             # DOM logic in lib/youtube.ts
+bun test             # DOM logic, settings races, and lifecycle cleanup
 bun run compile      # tsc --noEmit
 bun run build        # .output/chrome-mv3
+bun run build:firefox # .output/firefox-mv2
+bun run lint:firefox  # requires the Firefox build
+bunx --no-install playwright install chromium
+bun run test:browser # builds Chrome and runs deterministic Chromium fixtures
 bun run zip          # packaged extension
 ```
 
 ## Layout
 
-- `entrypoints/content.ts` injects the stylesheet, sweeps the DOM on mutation, and polls for ads
+- `entrypoints/content.ts` registers the content script; `lib/content.ts` owns its lifecycle
 - `lib/youtube.ts` holds the selectors and DOM logic (tested)
-- `lib/settings.ts` holds the settings shape, defaults, and storage item
+- `lib/settings.ts` holds the settings shape, defaults, and storage subscriptions
 - `entrypoints/popup/` is the React popup
 - `components/ui/` is the coss ui components
+- `tests/` covers settings races, lifecycle cleanup, and DOM behavior
+- `browser-tests/` checks the popup, CSS, and isolated-world dismissal in Chromium
+
+Use Bun 1.3.14. Firefox development builds have a stable temporary add-on ID for `storage.sync`;
+production builds leave the identity to AMO signing. An unsigned production ZIP loaded temporarily
+is not a substitute for the Firefox development build when testing synced preferences.
+
+Browser tests serve fixtures on `127.0.0.1:4173` and do not contact YouTube. Set
+`CHROMIUM_EXECUTABLE_PATH` to use an existing compatible Chromium binary. Pull requests run the
+unit tests, type checks, Firefox build/lint, and Chromium tests, including the Chrome build.
+
+The lockfile includes targeted patch overrides for `brace-expansion`, `fast-uri`, `js-yaml`,
+`nanoid`, and `undici` until their parent tools resolve the patched releases themselves.
+Keep each override on its existing compatible version line; remove it once a regenerated
+lockfile resolves a non-vulnerable version without it.
 
 ## Why ads are skipped, not pruned
 
@@ -65,7 +95,8 @@ because the refusal has already happened server-side.
 
 So the extension no longer touches player responses. It lets YouTube deliver the ad, mutes it, and
 clicks "skip" once the button is offered. An unskippable ad plays out in full, muted. The cost is
-up to ~200 ms of audible ad per break, bounded by the poll interval in `entrypoints/content.ts`.
+roughly 200 ms of audible ad per break under normal foreground scheduling. Main-thread work and
+browser timer throttling can delay the poll, so this is not an upper bound.
 
 On youtube.com it also never moves the playback position. The player reports ad progress at each
 quartile, so an ad seeked to its end reports as watched in ~0 ms, with every ping landing in the

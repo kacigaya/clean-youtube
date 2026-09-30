@@ -1,69 +1,7 @@
-import { DEFAULT_SETTINGS, getSettings, settingsItem, type Settings, withDefaults } from '@/lib/settings';
-import {
-  buildCss,
-  dismissUpsells,
-  hidePremiumGuideEntries,
-  restorePlayerMute,
-  skipPlayerAd,
-} from '@/lib/youtube';
+import { startContent } from '@/lib/content';
 
 export default defineContentScript({
   matches: ['*://www.youtube.com/*', '*://music.youtube.com/*'],
   runAt: 'document_start',
-
-  async main(ctx) {
-    let settings: Settings = DEFAULT_SETTINGS;
-
-    const style = document.createElement('style');
-    (document.head ?? document.documentElement).append(style);
-    const applyCss = () => {
-      style.textContent = buildCss(settings);
-    };
-
-    let queued = false;
-    const sweep = () => {
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(() => {
-        queued = false;
-        if (settings.hidePremiumEntry) hidePremiumGuideEntries();
-        if (settings.blockUpsell) dismissUpsells();
-      });
-    };
-
-    // Defaults are on, so hide first and reconcile once storage answers.
-    applyCss();
-    settings = await getSettings();
-    applyCss();
-    sweep();
-
-    settingsItem.watch((value) => {
-      const nextSettings = withDefaults(value);
-      if (settings.blockAds && !nextSettings.blockAds) restorePlayerMute();
-      settings = nextSettings;
-      applyCss();
-      sweep();
-    });
-
-    const observer = new MutationObserver(sweep);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-
-    // An extension reload invalidates this context; the observer and stylesheet outlive it.
-    ctx.onInvalidated(() => {
-      observer.disconnect();
-      style.remove();
-      restorePlayerMute();
-    });
-
-    // youtube.com raises the "ad blockers violate our ToS" wall when an ad is
-    // seeked past; YouTube Music does not enforce, so ads there are cleared
-    // outright rather than left to play muted.
-    const seekPastAd = location.hostname === 'music.youtube.com';
-
-    // Ads flip a class on the player rather than adding nodes, so poll instead of
-    // observing. Frequently, because the poll is what the viewer hears as ad length.
-    ctx.setInterval(() => {
-      if (settings.blockAds) skipPlayerAd(document, seekPastAd);
-    }, 200);
-  },
+  main: startContent,
 });
