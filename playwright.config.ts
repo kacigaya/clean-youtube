@@ -6,13 +6,13 @@ export default defineConfig({
   workers: 1,
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    browserName: 'chromium',
-    launchOptions: {
-      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
-    },
   },
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium', launchOptions: { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } } },
+    { name: 'firefox', use: { browserName: 'firefox' } },
+  ],
   webServer: {
-    command: 'bun run build && bun build browser-tests/fixture.ts --outdir .output/test-fixture --target browser && bun browser-tests/server.ts',
+    command: 'bun run build && bun run build:firefox && bun build browser-tests/fixture.ts --outdir .output/test-fixture --target browser && bun browser-tests/server.ts',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
   },

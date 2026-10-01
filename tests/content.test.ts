@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, expect, mock, spyOn, test, jest } from 'bun:test';
 import { fakeBrowser } from '@webext-core/fake-browser';
 import { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { startContent } from '@/lib/content';
@@ -48,21 +48,22 @@ afterEach(async () => {
   ctx.notifyInvalidated();
   await settle();
   mock.restore();
+  jest.useRealTimers();
   globalThis.MutationObserver = OriginalMutationObserver;
 });
 
-test('invalidation cancels queued work, removes styles and unregisters storage listeners', async () => {
+test('invalidation cancels queued work, clears feature attributes and unregisters storage listeners', async () => {
   const remove = spyOn(fakeBrowser.storage.sync.onChanged, 'removeListener');
   startContent(ctx);
   await settle();
   expect(frames.size).toBe(1);
   ctx.notifyInvalidated();
   expect(frames.size).toBe(0);
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
   expect(remove).toHaveBeenCalledTimes(7);
   await setSetting('hideShorts', false);
   await sweep();
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
 });
 
 test('a read completing after invalidation cannot reinstall resources', async () => {
@@ -73,7 +74,7 @@ test('a read completing after invalidation cannot reinstall resources', async ()
   ctx.notifyInvalidated();
   resolve({});
   await sweep();
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
   expect(frames.size).toBe(0);
 });
 
@@ -82,9 +83,9 @@ test('storage rejection retains defaults and cleanup remains available', async (
   startContent(ctx);
   await sweep();
   expect(console.warn).toHaveBeenCalledTimes(1);
-  expect(document.querySelector('style')?.textContent).toContain('ytd-reel-shelf-renderer');
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(true);
   ctx.notifyInvalidated();
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
 });
 
 test('a delayed initial read cannot act before saved disabled preferences arrive', async () => {
@@ -92,18 +93,17 @@ test('a delayed initial read cannot act before saved disabled preferences arrive
   let resolve!: (value: Record<string, unknown>) => void;
   const pending = new Promise<Record<string, unknown>>((done) => { resolve = done; });
   spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(() => pending);
-  let poll!: () => void;
-  spyOn(ctx, 'setInterval').mockImplementation((callback) => { poll = callback; return 0; });
+  const poll = spyOn(globalThis, 'setInterval');
   const close = mock();
   document.querySelector('button')!.addEventListener('click', close);
   startContent(ctx);
   await sweep();
-  poll();
+  expect(poll.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
   expect(close).not.toHaveBeenCalled();
   expect(document.querySelector('video')!.muted).toBe(false);
   resolve({ settings: { blockAds: false, blockUpsell: false, hideMembership: false } });
   await sweep();
-  poll();
+  expect(poll.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
   expect(close).not.toHaveBeenCalled();
   expect(document.querySelector('video')!.muted).toBe(false);
 });
@@ -136,4 +136,89 @@ test('attribute changes remove stale Premium markers and disabling the feature c
   await setSetting('hidePremiumEntry', false);
   await sweep();
   expect(entry.dataset.cleanYoutubeHidden).toBeUndefined();
+});
+
+test('unrelated text changes avoid document scans while inserted entries are classified', async () => {
+  document.body.innerHTML = '<main><div id="status"></div></main>';
+  startContent(ctx);
+  await sweep();
+  const query = spyOn(document, 'querySelectorAll');
+  document.querySelector('#status')!.textContent = 'Updated';
+  await sweep();
+  expect(query).not.toHaveBeenCalled();
+  const entry = document.createElement('ytd-guide-entry-renderer');
+  entry.innerHTML = '<a href="/premium">Premium</a>';
+  document.querySelector('main')!.append(entry);
+  await sweep();
+  expect(entry.dataset.cleanYoutubeHidden).toBe('1');
+  expect(query).not.toHaveBeenCalled();
+  entry.querySelector('a')!.remove();
+  await sweep();
+  expect(entry.dataset.cleanYoutubeHidden).toBeUndefined();
+});
+
+test('player polling starts on insertion and stops on removal, disabling and invalidation', async () => {
+  jest.useFakeTimers();
+  const interval = spyOn(globalThis, 'setInterval');
+  const clear = spyOn(globalThis, 'clearInterval');
+  startContent(ctx);
+  await sweep();
+  expect(interval.mock.calls.filter(([, delay]) => delay === 200)).toHaveLength(0);
+  const player = document.createElement('div');
+  player.id = 'movie_player';
+  player.className = 'ad-showing';
+  player.innerHTML = '<video></video>';
+  document.body.append(player);
+  await sweep();
+  expect(interval.mock.calls.filter(([, delay]) => delay === 200)).toHaveLength(1);
+  jest.advanceTimersByTime(200);
+  expect(player.querySelector('video')!.muted).toBe(true);
+  player.remove();
+  await sweep();
+  expect(clear).toHaveBeenCalledTimes(1);
+  expect(player.querySelector('video')!.muted).toBe(false);
+  document.body.append(player);
+  await sweep();
+  await setSetting('blockAds', false);
+  await sweep();
+  expect(clear).toHaveBeenCalledTimes(2);
+  await setSetting('blockAds', true);
+  await sweep();
+  ctx.notifyInvalidated();
+  expect(clear).toHaveBeenCalledTimes(4);
+});
+
+test('an initial read failure keeps player and dialog actions gated until retry succeeds', async () => {
+  jest.useFakeTimers();
+  await fakeBrowser.storage.sync.set({ settings: { blockAds: false, blockUpsell: false, hideMembership: false } });
+  spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(async () => { throw new Error('offline'); });
+  document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div><ytd-popup-container><tp-yt-paper-dialog opened><a href="/premium">Offer</a><button dialog-dismiss>Close</button></tp-yt-paper-dialog></ytd-popup-container>';
+  const close = mock();
+  document.querySelector('button')!.addEventListener('click', close);
+  const interval = spyOn(globalThis, 'setInterval');
+  startContent(ctx);
+  await sweep();
+  expect(interval.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
+  expect(close).not.toHaveBeenCalled();
+  jest.advanceTimersByTime(1000);
+  await sweep();
+  expect(interval.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
+  expect(close).not.toHaveBeenCalled();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-blockads')).toBe(false);
+});
+
+test('an unloaded extension clears feature attributes while the initial read is pending', async () => {
+  jest.useFakeTimers();
+  spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(() => new Promise(() => {}));
+  const runtimeId = fakeBrowser.runtime.id;
+  startContent(ctx);
+  await settle();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(true);
+  try {
+    Reflect.set(fakeBrowser.runtime, 'id', undefined);
+    jest.advanceTimersByTime(1000);
+    expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
+    expect(ctx.signal.aborted).toBe(true);
+    expect(frames.size).toBe(0);
+  } finally { Reflect.set(fakeBrowser.runtime, 'id', runtimeId); }
 });

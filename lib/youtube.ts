@@ -34,7 +34,7 @@ const hasPremiumLink = (root: ParentNode) => linksTo(root,
 const hasMembershipLink = (root: ParentNode) => linksTo(root,
   (path) => /^\/channel\/[^/]+\/join\/?$/.test(path));
 
-/** Static rules per feature, injected as one stylesheet built from the enabled ones. */
+/** Static rules per feature, used by native content CSS and browser fixtures. */
 export const CSS: Record<keyof Settings, string> = {
   hidePremiumEntry: `
     ytmusic-guide-entry-renderer:has(${PREMIUM_LINK}),
@@ -81,8 +81,7 @@ export const CSS: Record<keyof Settings, string> = {
   `,
   /**
    * Feed and sidebar ad containers only. Nothing inside the player is hidden:
-   * YouTube measures its own ad containers there, and a zero-sized one is read
-   * as ad blocking. Player ads are handled by skipPlayerAd instead.
+   * Preserve the player's layout. Player ads are handled by skipPlayerAd instead.
    */
   blockAds: `
     ytd-rich-item-renderer:has(ytd-ad-slot-renderer),
@@ -108,13 +107,26 @@ export function buildCss(settings: Settings): string {
     .join('\n');
 }
 
+/** Browser-owned content CSS, gated by removable feature attributes. */
+export function buildFeatureCss(): string {
+  return (Object.keys(CSS) as (keyof Settings)[])
+    .map((key) => `html[data-clean-youtube-${key.toLowerCase()}] { ${CSS[key]} }`)
+    .join('\n');
+}
+
+function queryWithin(root: ParentNode, selector: string): HTMLElement[] {
+  const elements = Array.from(root.querySelectorAll<HTMLElement>(selector));
+  if (root instanceof HTMLElement && root.matches(selector)) elements.unshift(root);
+  return elements;
+}
+
 /**
  * Mark sidebar entries that point at Premium, matched by link or by icon.
  * The icon check catches localised entries ("S'abonner", "Subscribe", ...) that
  * a text match would miss, and the CSS rule above hides whatever is marked.
  */
 export function hidePremiumGuideEntries(root: ParentNode = document) {
-  for (const entry of root.querySelectorAll<HTMLElement>(
+  for (const entry of queryWithin(root,
     'ytmusic-guide-entry-renderer, ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer',
   )) {
     const isPremium =
@@ -126,13 +138,13 @@ export function hidePremiumGuideEntries(root: ParentNode = document) {
 }
 
 export function clearPremiumGuideEntries(root: ParentNode = document) {
-  for (const entry of root.querySelectorAll<HTMLElement>('[data-clean-youtube-hidden]')) {
+  for (const entry of queryWithin(root, '[data-clean-youtube-hidden]')) {
     delete entry.dataset.cleanYoutubeHidden;
   }
 }
 
 export function hideMembershipButtons(root: ParentNode = document) {
-  for (const button of root.querySelectorAll<HTMLElement>(
+  for (const button of queryWithin(root,
     'ytd-button-renderer, yt-button-view-model, button-view-model',
   )) {
     if (hasMembershipLink(button)) button.dataset.cleanYoutubeMembershipHidden = '1';
@@ -141,7 +153,7 @@ export function hideMembershipButtons(root: ParentNode = document) {
 }
 
 export function clearMembershipButtons(root: ParentNode = document) {
-  for (const button of root.querySelectorAll<HTMLElement>('[data-clean-youtube-membership-hidden]')) {
+  for (const button of queryWithin(root, '[data-clean-youtube-membership-hidden]')) {
     delete button.dataset.cleanYoutubeMembershipHidden;
   }
 }
@@ -150,19 +162,30 @@ function isEnabled(element: HTMLElement): boolean {
   return !element.closest('[disabled], [aria-disabled="true"]') && !element.matches(':disabled');
 }
 
+function isActionable(element: HTMLElement): boolean {
+  if (!isEnabled(element) || element.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+    const style = getComputedStyle(current);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+  }
+  return true;
+}
+
 function clickDismiss(root: ParentNode): boolean {
   // Prefer the real button; clicking a wrapper can miss its page-owned handler.
-  const dismiss = root.querySelector<HTMLElement>(
+  const dismiss = Array.from(root.querySelectorAll<HTMLElement>(
     '#dismiss-button button, .dismiss-button button, [dialog-dismiss] button, #close-button button, button[dialog-dismiss], button#dismiss-button, button#close-button',
-  ) ?? root.querySelector<HTMLElement>('#dismiss-button, .dismiss-button, [dialog-dismiss], #close-button');
-  if (!dismiss || !isEnabled(dismiss)) return false;
+  )).find(isActionable) ?? Array.from(root.querySelectorAll<HTMLElement>(
+    '#dismiss-button, .dismiss-button, [dialog-dismiss], #close-button',
+  )).find((control) => !control.querySelector('button') && isActionable(control));
+  if (!dismiss) return false;
   dismiss.click();
   return true;
 }
 
 function dismissDialogs(root: ParentNode, matches: (dialog: ParentNode) => boolean): boolean {
   let dismissed = false;
-  for (const dialog of root.querySelectorAll<HTMLElement>(
+  for (const dialog of queryWithin(root,
     'ytmusic-popup-container tp-yt-paper-dialog[opened], ytd-popup-container tp-yt-paper-dialog[opened]',
   )) {
     if (matches(dialog)) dismissed = clickDismiss(dialog) || dismissed;
@@ -174,7 +197,7 @@ function dismissDialogs(root: ParentNode, matches: (dialog: ParentNode) => boole
 export function dismissUpsells(root: ParentNode = document) {
   let dismissed = false;
 
-  for (const promo of root.querySelectorAll(
+  for (const promo of queryWithin(root,
     'ytmusic-mealbar-promo-renderer, ytd-mealbar-promo-renderer',
   )) {
     // Music mealbars are Premium upsells only, and most carry no Premium link at
@@ -222,11 +245,9 @@ export function restorePlayerMute(root: ParentNode = document) {
  * offers the button.
  *
  * `seekPastAd` also jumps an unskippable ad to its end, which clears it outright
- * instead of leaving it to play silent. That is only safe on YouTube Music.
- * Seeking reports the ad as watched in ~0 ms with the player's quartile progress
- * pings all firing in one frame, and youtube.com flags that shape server-side to
- * raise the "ad blockers violate YouTube's Terms of Service" wall. YouTube Music
- * runs no such enforcement today, so callers there opt in.
+ * instead of leaving it to play silent. Callers opt in only on YouTube Music;
+ * the YouTube path preserves playback position. Platform enforcement can change,
+ * so Music seeking remains a deliberate limitation rather than a guarantee.
  */
 export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
   const player = root.querySelector<HTMLElement>('#movie_player.ad-showing, #player.ad-showing');
@@ -251,15 +272,7 @@ export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
 
   const skip = Array.from(player.querySelectorAll<HTMLElement>(
     '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button',
-  )).find((button) => {
-    if (!isEnabled(button) || button.closest('[hidden], [aria-hidden="true"]')) return false;
-    for (let element: HTMLElement | null = button; element; element = element.parentElement) {
-      const style = getComputedStyle(element);
-      if (style.display === 'none' || style.visibility === 'hidden') return false;
-      if (element === player) break;
-    }
-    return true;
-  });
+  )).find(isActionable);
   if (skip) {
     skip.click();
     return true;

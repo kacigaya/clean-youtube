@@ -405,6 +405,16 @@ describe('regressions', () => {
     expect(dialog.hasAttribute('opened')).toBe(true);
   });
 
+  test('dismissal finds an enabled visible control after disabled and hidden candidates', () => {
+    document.body.innerHTML = '<ytd-popup-container><tp-yt-paper-dialog opened><a href="/premium">Offer</a><div id="dismiss-button"><button disabled>Unavailable</button></div><div hidden><button dialog-dismiss>Hidden</button></div><button id="close-button">Close</button></tp-yt-paper-dialog></ytd-popup-container>';
+    const clicked: string[] = [];
+    for (const button of document.querySelectorAll('button')) button.addEventListener('click', () => clicked.push(button.id));
+    expect(dismissUpsells()).toBe(true);
+    expect(clicked).toEqual(['close-button']);
+    document.querySelector('#close-button')!.setAttribute('disabled', '');
+    expect(dismissUpsells()).toBe(false);
+  });
+
   test('membership button marking rejects external hosts and lookalike routes', () => {
     document.body.innerHTML = '<ytd-button-renderer id="join"><a href="/channel/abc/join?source=button">Join</a></ytd-button-renderer><ytd-button-renderer id="external"><a href="https://example.com/channel/abc/join">Other</a></ytd-button-renderer><ytd-button-renderer id="lookalike"><a href="/channel/abc/joined">Other</a></ytd-button-renderer>';
     hideMembershipButtons();
