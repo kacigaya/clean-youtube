@@ -1,5 +1,8 @@
 import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
+import { writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { buildFeatureCss } from './lib/youtube';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -12,6 +15,19 @@ export default defineConfig({
   vite: () => ({
     plugins: [tailwindcss()],
   }),
+  hooks: {
+    'build:manifestGenerated': (_wxt, manifest) => {
+      for (const script of manifest.content_scripts ?? []) {
+        if (script.js?.includes('content-scripts/content.js')) {
+          script.css = [...(script.css ?? []), 'content-features.css'];
+        }
+      }
+    },
+    'build:done': async (wxt, output) => {
+      await writeFile(resolve(wxt.config.outDir, 'content-features.css'), buildFeatureCss());
+      output.publicAssets.push({ type: 'asset', fileName: 'content-features.css' });
+    },
+  },
   manifest: ({ browser, mode }) => ({
     name: 'Clean YouTube',
     description:

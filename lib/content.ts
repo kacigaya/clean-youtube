@@ -1,7 +1,6 @@
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
-import { DEFAULT_SETTINGS, subscribeSettings, type Settings } from './settings';
+import { DEFAULT_SETTINGS, SETTING_KEYS, subscribeSettings, type Settings } from './settings';
 import {
-  buildCss,
   clearPremiumGuideEntries,
   clearMembershipButtons,
   dismissMembershipDialogs,
@@ -12,13 +11,18 @@ import {
   skipPlayerAd,
 } from './youtube';
 
+function setFeatureAttributes(settings: Settings | null) {
+  for (const key of SETTING_KEYS) {
+    document.documentElement.toggleAttribute(`data-clean-youtube-${key.toLowerCase()}`, settings?.[key] ?? false);
+  }
+}
+
 export function startContent(ctx: ContentScriptContext) {
   let settings: Settings = { ...DEFAULT_SETTINGS };
   let settingsReady = false;
   let stopped = false;
   let frame: number | undefined;
   let unsubscribe = () => {};
-  const style = document.createElement('style');
   const sweep = () => {
     if (stopped || ctx.isInvalid || !settingsReady || frame !== undefined ||
         !(settings.hidePremiumEntry || settings.blockUpsell || settings.hideMembership)) return;
@@ -39,15 +43,14 @@ export function startContent(ctx: ContentScriptContext) {
     stopped = true;
     observer.disconnect();
     if (frame !== undefined) cancelAnimationFrame(frame);
-    style.remove();
+    setFeatureAttributes(null);
     clearPremiumGuideEntries();
     clearMembershipButtons();
     restorePlayerMute();
     unsubscribe();
   });
   if (ctx.isInvalid) return;
-  (document.head ?? document.documentElement).append(style);
-  style.textContent = buildCss(settings);
+  setFeatureAttributes(settings);
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
@@ -61,8 +64,7 @@ export function startContent(ctx: ContentScriptContext) {
     if (settings.hideMembership && !nextSettings.hideMembership) clearMembershipButtons();
     settings = nextSettings;
     settingsReady = true;
-    const css = buildCss(settings);
-    if (style.textContent !== css) style.textContent = css;
+    setFeatureAttributes(settings);
     sweep();
   }, (error) => {
     if (stopped || ctx.isInvalid) return;

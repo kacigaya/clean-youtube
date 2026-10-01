@@ -51,18 +51,18 @@ afterEach(async () => {
   globalThis.MutationObserver = OriginalMutationObserver;
 });
 
-test('invalidation cancels queued work, removes styles and unregisters storage listeners', async () => {
+test('invalidation cancels queued work, clears feature attributes and unregisters storage listeners', async () => {
   const remove = spyOn(fakeBrowser.storage.sync.onChanged, 'removeListener');
   startContent(ctx);
   await settle();
   expect(frames.size).toBe(1);
   ctx.notifyInvalidated();
   expect(frames.size).toBe(0);
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
   expect(remove).toHaveBeenCalledTimes(7);
   await setSetting('hideShorts', false);
   await sweep();
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
 });
 
 test('a read completing after invalidation cannot reinstall resources', async () => {
@@ -73,7 +73,7 @@ test('a read completing after invalidation cannot reinstall resources', async ()
   ctx.notifyInvalidated();
   resolve({});
   await sweep();
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
   expect(frames.size).toBe(0);
 });
 
@@ -82,9 +82,9 @@ test('storage rejection retains defaults and cleanup remains available', async (
   startContent(ctx);
   await sweep();
   expect(console.warn).toHaveBeenCalledTimes(1);
-  expect(document.querySelector('style')?.textContent).toContain('ytd-reel-shelf-renderer');
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(true);
   ctx.notifyInvalidated();
-  expect(document.querySelector('style')).toBeNull();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
 });
 
 test('a delayed initial read cannot act before saved disabled preferences arrive', async () => {

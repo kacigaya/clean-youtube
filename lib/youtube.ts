@@ -108,6 +108,13 @@ export function buildCss(settings: Settings): string {
     .join('\n');
 }
 
+/** Native content CSS is removed by the browser when the extension unloads. */
+export function buildFeatureCss(): string {
+  return (Object.keys(CSS) as (keyof Settings)[])
+    .map((key) => `html[data-clean-youtube-${key.toLowerCase()}] { ${CSS[key]} }`)
+    .join('\n');
+}
+
 /**
  * Mark sidebar entries that point at Premium, matched by link or by icon.
  * The icon check catches localised entries ("S'abonner", "Subscribe", ...) that
