@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test, jest } from 'bun:test';
 import { fakeBrowser } from '@webext-core/fake-browser';
 import { DEFAULT_SETTINGS, getSettings, setSetting, subscribeSettings, withDefaults, type Settings } from '@/lib/settings';
 
@@ -9,6 +9,7 @@ beforeEach(() => fakeBrowser.reset());
 afterEach(() => {
   for (const stop of stops.splice(0)) stop();
   mock.restore();
+  jest.useRealTimers();
 });
 
 function deferred<T>() {
@@ -88,5 +89,52 @@ describe('settings storage', () => {
     await expect(setSetting('blockAds', false)).rejects.toThrow('write failed');
     set.mockRestore();
     expect((await getSettings()).blockAds).toBe(true);
+  });
+
+  test('transient failures recover automatically without storage changes', async () => {
+    jest.useFakeTimers();
+    await fakeBrowser.storage.sync.set({ settings: { blockAds: false } });
+    spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(async () => { throw new Error('offline'); });
+    const received = mock();
+    stops.push(subscribeSettings(received, mock()));
+    await flush();
+    expect(received).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1000);
+    await flush();
+    expect(received).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, blockAds: false });
+  });
+
+  test('retries are bounded and unsubscription cancels pending recovery', async () => {
+    jest.useFakeTimers();
+    const get = spyOn(fakeBrowser.storage.sync, 'get').mockImplementation(async () => { throw new Error('offline'); });
+    const stop = subscribeSettings(mock(), mock());
+    stops.push(stop);
+    await flush();
+    for (const delay of [1000, 2000, 4000, 8000]) {
+      jest.advanceTimersByTime(delay);
+      await flush();
+    }
+    expect(get).toHaveBeenCalledTimes(4);
+    await setSetting('hideShorts', false);
+    await flush();
+    expect(get).toHaveBeenCalledTimes(5);
+    stop();
+    jest.advanceTimersByTime(10000);
+    await flush();
+    expect(get).toHaveBeenCalledTimes(5);
+  });
+
+  test('a storage change cancels an older retry and restores the retry budget', async () => {
+    jest.useFakeTimers();
+    const get = spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(async () => { throw new Error('offline'); });
+    const received = mock();
+    stops.push(subscribeSettings(received, mock()));
+    await flush();
+    await setSetting('blockAds', false);
+    await flush();
+    jest.advanceTimersByTime(10000);
+    await flush();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(received).toHaveBeenCalledTimes(1);
   });
 });

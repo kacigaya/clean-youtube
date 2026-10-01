@@ -69,26 +69,43 @@ export function subscribeSettings(
 ): () => void {
   let active = true;
   let revision = 0;
+  let retries = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelRetry = () => {
+    if (retryTimer !== undefined) clearTimeout(retryTimer);
+    retryTimer = undefined;
+  };
   const unwatch: (() => void)[] = [];
   const stop = () => {
     active = false;
+    cancelRetry();
     for (const remove of unwatch.splice(0)) {
       try { remove(); } catch (error) { onError(error); }
     }
   };
   const refresh = async () => {
     if (!active) return;
+    cancelRetry();
     const currentRevision = ++revision;
     try {
       const settings = await getSettings();
-      if (active && currentRevision === revision) onSettings(settings);
+      if (active && currentRevision === revision) {
+        retries = 0;
+        onSettings(settings);
+      }
     } catch (error) {
-      if (active && currentRevision === revision) onError(error);
+      if (active && currentRevision === revision) {
+        onError(error);
+        // Three retries per failure sequence; changes and successful reads reset
+        // the budget. Retain the last confirmed settings while storage recovers.
+        const delay = [1000, 2000, 4000][retries++];
+        if (delay !== undefined) retryTimer = setTimeout(() => { void refresh(); }, delay);
+      }
     }
   };
   try {
     for (const item of [legacySettingsItem, ...SETTING_KEYS.map((key) => settingItems[key])]) {
-      unwatch.push(item.watch(() => { void refresh(); }));
+      unwatch.push(item.watch(() => { retries = 0; void refresh(); }));
     }
     void refresh();
   } catch (error) {
