@@ -2,13 +2,17 @@ import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
 
 async function contentWorld(page: Page) {
+  const source = await readFile('.output/test-fixture/fixture.js', 'utf8');
+  if (page.context().browser()?.browserType().name() === 'firefox') {
+    await page.addScriptTag({ content: source });
+    return (expression: string): Promise<unknown> => page.evaluate((source) => eval(source), expression);
+  }
   const session = await page.context().newCDPSession(page);
   const { frameTree } = await session.send('Page.getFrameTree');
   const { executionContextId } = await session.send('Page.createIsolatedWorld', {
     frameId: frameTree.frame.id,
     worldName: 'clean-youtube-test',
   });
-  const source = await readFile('.output/test-fixture/fixture.js', 'utf8');
   await session.send('Runtime.evaluate', { expression: source, contextId: executionContextId });
   return async (expression: string): Promise<unknown> => {
     const response = await session.send('Runtime.evaluate', {
@@ -21,7 +25,8 @@ async function contentWorld(page: Page) {
   };
 }
 
-test('native Premium dismissal crosses the isolated-world boundary and preserves another modal', async ({ page }) => {
+test('native Premium dismissal crosses the isolated-world boundary and preserves another modal', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP isolated worlds are Chromium-specific; Firefox isolation is covered by installed-extension tests.');
   await page.setContent('<ytd-popup-container><tp-yt-paper-dialog id="premium" opened><a href="/premium">Offer</a><button dialog-dismiss>Close</button></tp-yt-paper-dialog><tp-yt-paper-dialog id="playlist" opened>Playlist</tp-yt-paper-dialog></ytd-popup-container><tp-yt-iron-overlay-backdrop class="opened"></tp-yt-iron-overlay-backdrop>');
   await page.evaluate(() => {
     document.documentElement.style.overflow = 'hidden';
@@ -36,6 +41,14 @@ test('native Premium dismissal crosses the isolated-world boundary and preserves
   await expect(page.locator('#playlist')).toHaveAttribute('opened');
   await expect(page.locator('tp-yt-iron-overlay-backdrop')).toHaveClass('opened');
   expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('hidden');
+});
+
+test('native dismissal selects a visible enabled Close button', async ({ page }) => {
+  await page.setContent('<ytd-popup-container><tp-yt-paper-dialog opened><a href="/premium">Offer</a><button dialog-dismiss disabled>Unavailable</button><div style="display:none"><button dialog-dismiss>Hidden</button></div><button id="close-button">Close</button></tp-yt-paper-dialog></ytd-popup-container>');
+  await page.evaluate(() => document.querySelector('#close-button')!.addEventListener('click', () => document.querySelector('tp-yt-paper-dialog')!.removeAttribute('opened')));
+  const evaluate = await contentWorld(page);
+  expect(await evaluate('window.youtube.dismissUpsells()')).toBe(true);
+  await expect(page.locator('tp-yt-paper-dialog')).not.toHaveAttribute('opened');
 });
 
 test('CSS leaves an undismissable membership modal visible and ignores Premium-like URLs', async ({ page }) => {
