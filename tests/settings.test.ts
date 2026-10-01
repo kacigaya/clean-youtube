@@ -137,4 +137,15 @@ describe('settings storage', () => {
     expect(get).toHaveBeenCalledTimes(2);
     expect(received).toHaveBeenCalledTimes(1);
   });
+
+  test('unsubscribing inside the error callback does not schedule a retry', async () => {
+    jest.useFakeTimers();
+    spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(async () => { throw new Error('offline'); });
+    const schedule = spyOn(globalThis, 'setTimeout');
+    let stop = () => {};
+    stop = subscribeSettings(mock(), () => stop());
+    stops.push(stop);
+    await flush();
+    expect(schedule).not.toHaveBeenCalled();
+  });
 });

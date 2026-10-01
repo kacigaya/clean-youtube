@@ -96,6 +96,7 @@ export function subscribeSettings(
     } catch (error) {
       if (active && currentRevision === revision) {
         onError(error);
+        if (!active || currentRevision !== revision) return;
         // Three retries per failure sequence; changes and successful reads reset
         // the budget. Retain the last confirmed settings while storage recovers.
         const delay = [1000, 2000, 4000][retries++];
