@@ -86,7 +86,9 @@ export async function startFirefox(uuid: string, extensionId: string) {
       send, close,
       onEvent: (listener: (message: Reply) => void) => { listeners.add(listener); },
       async createPage() {
-        const reply = await send('browsingContext.create', { type: 'tab' });
+        // Native BiDi's foreground-tab visibility wait can stall in patched
+        // Firefox. Separate windows work in both stock and Playwright builds.
+        const reply = await send('browsingContext.create', { type: 'window' });
         if (typeof reply.context !== 'string') throw new Error('Missing Firefox context');
         const context = reply.context;
         return {
