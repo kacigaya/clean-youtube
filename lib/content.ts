@@ -71,6 +71,7 @@ export function startContent(ctx: ContentScriptContext) {
     });
   };
   const observer = new MutationObserver((records) => {
+    if (stopped || ctx.isInvalid) return;
     syncPlayerPoll();
     for (const record of records) {
       // Reclassify affected ancestors after link/icon/control changes or removals.
@@ -119,7 +120,8 @@ export function startContent(ctx: ContentScriptContext) {
   }, (error) => {
     if (stopped || ctx.isInvalid) return;
     console.warn('Clean YouTube could not load settings; retaining current settings.', error);
-    settingsReady = true;
+    // An initial failure must not enable player/dialog actions before a stored
+    // disabled preference can be recovered. Later failures keep confirmed state.
     syncPlayerPoll();
     sweep();
   });

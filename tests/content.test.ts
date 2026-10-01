@@ -187,3 +187,22 @@ test('player polling starts on insertion and stops on removal, disabling and inv
   ctx.notifyInvalidated();
   expect(clear).toHaveBeenCalledTimes(3);
 });
+
+test('an initial read failure keeps player and dialog actions gated until retry succeeds', async () => {
+  jest.useFakeTimers();
+  await fakeBrowser.storage.sync.set({ settings: { blockAds: false, blockUpsell: false, hideMembership: false } });
+  spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(async () => { throw new Error('offline'); });
+  document.body.innerHTML = '<div id="movie_player" class="ad-showing"><video></video></div><ytd-popup-container><tp-yt-paper-dialog opened><a href="/premium">Offer</a><button dialog-dismiss>Close</button></tp-yt-paper-dialog></ytd-popup-container>';
+  const close = mock();
+  document.querySelector('button')!.addEventListener('click', close);
+  const interval = spyOn(globalThis, 'setInterval');
+  startContent(ctx);
+  await sweep();
+  expect(interval).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  jest.advanceTimersByTime(1000);
+  await sweep();
+  expect(interval).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-blockads')).toBe(false);
+});
