@@ -32,7 +32,7 @@ export async function startFirefox(uuid: string, extensionId: string) {
     socket?.close();
     for (const call of pending.values()) call.reject(new Error('Firefox closed'));
     pending.clear();
-    if (process.exitCode === null && process.signalCode === null) {
+    if (process.pid !== undefined && process.exitCode === null && process.signalCode === null) {
       process.kill();
       await new Promise<void>((resolve) => {
         const timer = setTimeout(() => process.kill('SIGKILL'), 5000);
