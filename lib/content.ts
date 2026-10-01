@@ -107,6 +107,10 @@ export function startContent(ctx: ContentScriptContext) {
     attributes: true,
     attributeFilter: ['opened', 'dialog', 'href', 'd', 'disabled', 'aria-disabled', 'hidden', 'aria-hidden', 'inert', 'style', 'class', 'id'],
   });
+  // Chromium keeps native CSS in loaded pages after uninstall. Detect invalid
+  // contexts even before the first read completes or when no player is polling.
+  ctx.setInterval(() => {}, 1000);
+  ctx.addEventListener(document, 'visibilitychange', () => { void ctx.isInvalid; });
   unsubscribe = subscribeSettings((nextSettings) => {
     if (stopped || ctx.isInvalid) return;
     if (settings.blockAds && !nextSettings.blockAds) restorePlayerMute();

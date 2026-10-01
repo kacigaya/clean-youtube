@@ -107,7 +107,7 @@ export function buildCss(settings: Settings): string {
     .join('\n');
 }
 
-/** Native content CSS is removed by the browser when the extension unloads. */
+/** Browser-owned content CSS, gated by removable feature attributes. */
 export function buildFeatureCss(): string {
   return (Object.keys(CSS) as (keyof Settings)[])
     .map((key) => `html[data-clean-youtube-${key.toLowerCase()}] { ${CSS[key]} }`)

@@ -98,12 +98,12 @@ test('a delayed initial read cannot act before saved disabled preferences arrive
   document.querySelector('button')!.addEventListener('click', close);
   startContent(ctx);
   await sweep();
-  expect(poll).not.toHaveBeenCalled();
+  expect(poll.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
   expect(close).not.toHaveBeenCalled();
   expect(document.querySelector('video')!.muted).toBe(false);
   resolve({ settings: { blockAds: false, blockUpsell: false, hideMembership: false } });
   await sweep();
-  expect(poll).not.toHaveBeenCalled();
+  expect(poll.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
   expect(close).not.toHaveBeenCalled();
   expect(document.querySelector('video')!.muted).toBe(false);
 });
@@ -163,14 +163,14 @@ test('player polling starts on insertion and stops on removal, disabling and inv
   const clear = spyOn(globalThis, 'clearInterval');
   startContent(ctx);
   await sweep();
-  expect(interval).not.toHaveBeenCalled();
+  expect(interval.mock.calls.filter(([, delay]) => delay === 200)).toHaveLength(0);
   const player = document.createElement('div');
   player.id = 'movie_player';
   player.className = 'ad-showing';
   player.innerHTML = '<video></video>';
   document.body.append(player);
   await sweep();
-  expect(interval).toHaveBeenCalledTimes(1);
+  expect(interval.mock.calls.filter(([, delay]) => delay === 200)).toHaveLength(1);
   jest.advanceTimersByTime(200);
   expect(player.querySelector('video')!.muted).toBe(true);
   player.remove();
@@ -185,7 +185,7 @@ test('player polling starts on insertion and stops on removal, disabling and inv
   await setSetting('blockAds', true);
   await sweep();
   ctx.notifyInvalidated();
-  expect(clear).toHaveBeenCalledTimes(3);
+  expect(clear).toHaveBeenCalledTimes(4);
 });
 
 test('an initial read failure keeps player and dialog actions gated until retry succeeds', async () => {
@@ -198,11 +198,27 @@ test('an initial read failure keeps player and dialog actions gated until retry 
   const interval = spyOn(globalThis, 'setInterval');
   startContent(ctx);
   await sweep();
-  expect(interval).not.toHaveBeenCalled();
+  expect(interval.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
   expect(close).not.toHaveBeenCalled();
   jest.advanceTimersByTime(1000);
   await sweep();
-  expect(interval).not.toHaveBeenCalled();
+  expect(interval.mock.calls.some(([, delay]) => delay === 200)).toBe(false);
   expect(close).not.toHaveBeenCalled();
   expect(document.documentElement.hasAttribute('data-clean-youtube-blockads')).toBe(false);
+});
+
+test('an unloaded extension clears feature attributes while the initial read is pending', async () => {
+  jest.useFakeTimers();
+  spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(() => new Promise(() => {}));
+  const runtimeId = fakeBrowser.runtime.id;
+  startContent(ctx);
+  await settle();
+  expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(true);
+  try {
+    Reflect.set(fakeBrowser.runtime, 'id', undefined);
+    jest.advanceTimersByTime(1000);
+    expect(document.documentElement.hasAttribute('data-clean-youtube-hideshorts')).toBe(false);
+    expect(ctx.signal.aborted).toBe(true);
+    expect(frames.size).toBe(0);
+  } finally { Reflect.set(fakeBrowser.runtime, 'id', runtimeId); }
 });

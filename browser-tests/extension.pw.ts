@@ -35,12 +35,14 @@ test('installed extension uses real sync storage, handles navigation and release
   } finally { await runtime.close(); }
 });
 
-test('uninstall removes native page styles and reinstall restores working content scripts', async ({ browserName }) => {
+test('uninstall releases feature styles and reinstall restores working content scripts', async ({ browserName }) => {
   const runtime = await openRuntime(browserName);
   try {
     const page = await runtime.newPage();
     await page.navigate('https://www.youtube.com/__clean_youtube_test__');
     await expect.poll(() => page.evaluate('getComputedStyle(document.querySelector("#premium")).display')).toBe('none');
+    // Teardown must still run on idle pages without a player poll.
+    await page.evaluate('document.querySelector("#movie_player").remove()');
     await runtime.uninstall();
     await expect.poll(() => page.evaluate('getComputedStyle(document.querySelector("#premium")).display')).not.toBe('none');
     await runtime.install();
