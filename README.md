@@ -43,6 +43,7 @@ Player and dialog actions wait for a successful initial read, including when tha
 Feature rules are registered as native content CSS and enabled through attributes on the page's
 root element. The browser removes that CSS on extension unload, including Firefox, where content
 script callbacks may be destroyed before they can clean up a DOM-inserted stylesheet.
+These rules require CSS nesting and `:has()` support; older browser versions are not tested.
 
 Modal dismissal uses the page's native Close control so its focus and scroll state are released
 by YouTube. A modal without a usable Close control remains visible. The extension does not remove
