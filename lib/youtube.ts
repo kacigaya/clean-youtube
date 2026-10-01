@@ -150,12 +150,23 @@ function isEnabled(element: HTMLElement): boolean {
   return !element.closest('[disabled], [aria-disabled="true"]') && !element.matches(':disabled');
 }
 
+function isActionable(element: HTMLElement): boolean {
+  if (!isEnabled(element) || element.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+    const style = getComputedStyle(current);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+  }
+  return true;
+}
+
 function clickDismiss(root: ParentNode): boolean {
   // Prefer the real button; clicking a wrapper can miss its page-owned handler.
-  const dismiss = root.querySelector<HTMLElement>(
+  const dismiss = Array.from(root.querySelectorAll<HTMLElement>(
     '#dismiss-button button, .dismiss-button button, [dialog-dismiss] button, #close-button button, button[dialog-dismiss], button#dismiss-button, button#close-button',
-  ) ?? root.querySelector<HTMLElement>('#dismiss-button, .dismiss-button, [dialog-dismiss], #close-button');
-  if (!dismiss || !isEnabled(dismiss)) return false;
+  )).find(isActionable) ?? Array.from(root.querySelectorAll<HTMLElement>(
+    '#dismiss-button, .dismiss-button, [dialog-dismiss], #close-button',
+  )).find((control) => !control.querySelector('button') && isActionable(control));
+  if (!dismiss) return false;
   dismiss.click();
   return true;
 }
@@ -251,15 +262,7 @@ export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
 
   const skip = Array.from(player.querySelectorAll<HTMLElement>(
     '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button',
-  )).find((button) => {
-    if (!isEnabled(button) || button.closest('[hidden], [aria-hidden="true"]')) return false;
-    for (let element: HTMLElement | null = button; element; element = element.parentElement) {
-      const style = getComputedStyle(element);
-      if (style.display === 'none' || style.visibility === 'hidden') return false;
-      if (element === player) break;
-    }
-    return true;
-  });
+  )).find(isActionable);
   if (skip) {
     skip.click();
     return true;
