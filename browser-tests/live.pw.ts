@@ -15,7 +15,18 @@ for (const hostname of ['www.youtube.com', 'music.youtube.com']) {
       const page = await runtime.newPage();
       diagnostics = () => page.evaluate('({url:location.href,title:document.title,text:document.body?.innerText.slice(0,500)})');
       await page.navigate(`https://${hostname}/`);
-      await expect.poll(() => page.evaluate('!!document.querySelector("ytd-app, ytmusic-app")'), { timeout: 25000 }).toBe(true);
+      if (await page.evaluate('location.hostname') === 'consent.youtube.com') {
+        // Only reject optional cookies in this disposable anonymous profile.
+        await page.evaluate(`(() => {
+          const reject = Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === 'Reject all');
+          if (!reject) throw new Error('Consent page has no Reject all control');
+          reject.click();
+        })()`);
+      }
+      await expect.poll(() => page.evaluate('!!document.querySelector("ytd-app, ytmusic-app")').catch((error: unknown) => {
+        if (error instanceof Error && error.message.includes('Execution context was destroyed')) return false;
+        throw error;
+      }), { timeout: 25000 }).toBe(true);
       await expect.poll(() => page.evaluate('document.documentElement.hasAttribute("data-clean-youtube-hidepremiumentry")')).toBe(false);
       await popup.evaluate('(globalThis.browser ?? globalThis.chrome).storage.sync.set({"settings:hidePremiumEntry":true})');
       await expect.poll(() => page.evaluate('document.documentElement.hasAttribute("data-clean-youtube-hidepremiumentry")')).toBe(true);

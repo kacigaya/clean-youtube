@@ -33,6 +33,7 @@ export async function openRuntime(browserName: string, fixture = runtimeFixture,
     const context = await chromium.launchPersistentContext(join(directory, 'profile'), {
       executablePath: process.env.CHROMIUM_EXECUTABLE_PATH,
       channel: 'chromium',
+      headless: !live,
       ignoreDefaultArgs: ['--disable-extensions'],
       args: ['--enable-unsafe-extension-debugging'],
     }).catch(async (error: unknown) => { await rm(directory, { recursive: true, force: true }); throw error; });
