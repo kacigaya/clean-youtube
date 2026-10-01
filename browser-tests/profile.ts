@@ -23,15 +23,20 @@ try {
   const world = worlds.find((world) => world.origin === `chrome-extension://${id}` || world.name === id);
   if (!world) throw new Error('Extension content world not found: ' + JSON.stringify(worlds));
   await session.send('Runtime.evaluate', { contextId: world.id, expression: `
-    globalThis.profile = { sweeps: [], playerQueries: 0 };
+    globalThis.profile = { sweeps: [], playerPollQueries: 0, playerPresenceChecks: 0 };
     const originalFrame = requestAnimationFrame;
     globalThis.requestAnimationFrame = callback => originalFrame(time => {
       const start = performance.now(); callback(time); profile.sweeps.push(performance.now() - start);
     });
     const originalQuery = Document.prototype.querySelector;
     Document.prototype.querySelector = function(selector) {
-      if (selector.includes('#movie_player')) profile.playerQueries++;
+      if (selector.includes('#movie_player')) profile.playerPollQueries++;
       return originalQuery.call(this, selector);
+    };
+    const originalGetById = Document.prototype.getElementById;
+    Document.prototype.getElementById = function(id) {
+      if (id === 'movie_player' || id === 'player') profile.playerPresenceChecks++;
+      return originalGetById.call(this, id);
     };
   ` });
   // Two foreground frames per change allow the observer's scheduled sweep to run.
