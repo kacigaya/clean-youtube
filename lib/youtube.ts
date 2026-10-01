@@ -115,13 +115,19 @@ export function buildFeatureCss(): string {
     .join('\n');
 }
 
+function queryWithin(root: ParentNode, selector: string): HTMLElement[] {
+  const elements = Array.from(root.querySelectorAll<HTMLElement>(selector));
+  if (root instanceof HTMLElement && root.matches(selector)) elements.unshift(root);
+  return elements;
+}
+
 /**
  * Mark sidebar entries that point at Premium, matched by link or by icon.
  * The icon check catches localised entries ("S'abonner", "Subscribe", ...) that
  * a text match would miss, and the CSS rule above hides whatever is marked.
  */
 export function hidePremiumGuideEntries(root: ParentNode = document) {
-  for (const entry of root.querySelectorAll<HTMLElement>(
+  for (const entry of queryWithin(root,
     'ytmusic-guide-entry-renderer, ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer',
   )) {
     const isPremium =
@@ -133,13 +139,13 @@ export function hidePremiumGuideEntries(root: ParentNode = document) {
 }
 
 export function clearPremiumGuideEntries(root: ParentNode = document) {
-  for (const entry of root.querySelectorAll<HTMLElement>('[data-clean-youtube-hidden]')) {
+  for (const entry of queryWithin(root, '[data-clean-youtube-hidden]')) {
     delete entry.dataset.cleanYoutubeHidden;
   }
 }
 
 export function hideMembershipButtons(root: ParentNode = document) {
-  for (const button of root.querySelectorAll<HTMLElement>(
+  for (const button of queryWithin(root,
     'ytd-button-renderer, yt-button-view-model, button-view-model',
   )) {
     if (hasMembershipLink(button)) button.dataset.cleanYoutubeMembershipHidden = '1';
@@ -148,7 +154,7 @@ export function hideMembershipButtons(root: ParentNode = document) {
 }
 
 export function clearMembershipButtons(root: ParentNode = document) {
-  for (const button of root.querySelectorAll<HTMLElement>('[data-clean-youtube-membership-hidden]')) {
+  for (const button of queryWithin(root, '[data-clean-youtube-membership-hidden]')) {
     delete button.dataset.cleanYoutubeMembershipHidden;
   }
 }
@@ -180,7 +186,7 @@ function clickDismiss(root: ParentNode): boolean {
 
 function dismissDialogs(root: ParentNode, matches: (dialog: ParentNode) => boolean): boolean {
   let dismissed = false;
-  for (const dialog of root.querySelectorAll<HTMLElement>(
+  for (const dialog of queryWithin(root,
     'ytmusic-popup-container tp-yt-paper-dialog[opened], ytd-popup-container tp-yt-paper-dialog[opened]',
   )) {
     if (matches(dialog)) dismissed = clickDismiss(dialog) || dismissed;
@@ -192,7 +198,7 @@ function dismissDialogs(root: ParentNode, matches: (dialog: ParentNode) => boole
 export function dismissUpsells(root: ParentNode = document) {
   let dismissed = false;
 
-  for (const promo of root.querySelectorAll(
+  for (const promo of queryWithin(root,
     'ytmusic-mealbar-promo-renderer, ytd-mealbar-promo-renderer',
   )) {
     // Music mealbars are Premium upsells only, and most carry no Premium link at

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, expect, mock, spyOn, test, jest } from 'bun:test';
 import { fakeBrowser } from '@webext-core/fake-browser';
 import { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { startContent } from '@/lib/content';
@@ -48,6 +48,7 @@ afterEach(async () => {
   ctx.notifyInvalidated();
   await settle();
   mock.restore();
+  jest.useRealTimers();
   globalThis.MutationObserver = OriginalMutationObserver;
 });
 
@@ -92,18 +93,17 @@ test('a delayed initial read cannot act before saved disabled preferences arrive
   let resolve!: (value: Record<string, unknown>) => void;
   const pending = new Promise<Record<string, unknown>>((done) => { resolve = done; });
   spyOn(fakeBrowser.storage.sync, 'get').mockImplementationOnce(() => pending);
-  let poll!: () => void;
-  spyOn(ctx, 'setInterval').mockImplementation((callback) => { poll = callback; return 0; });
+  const poll = spyOn(globalThis, 'setInterval');
   const close = mock();
   document.querySelector('button')!.addEventListener('click', close);
   startContent(ctx);
   await sweep();
-  poll();
+  expect(poll).not.toHaveBeenCalled();
   expect(close).not.toHaveBeenCalled();
   expect(document.querySelector('video')!.muted).toBe(false);
   resolve({ settings: { blockAds: false, blockUpsell: false, hideMembership: false } });
   await sweep();
-  poll();
+  expect(poll).not.toHaveBeenCalled();
   expect(close).not.toHaveBeenCalled();
   expect(document.querySelector('video')!.muted).toBe(false);
 });
@@ -136,4 +136,54 @@ test('attribute changes remove stale Premium markers and disabling the feature c
   await setSetting('hidePremiumEntry', false);
   await sweep();
   expect(entry.dataset.cleanYoutubeHidden).toBeUndefined();
+});
+
+test('unrelated text changes avoid document scans while inserted entries are classified', async () => {
+  document.body.innerHTML = '<main><div id="status"></div></main>';
+  startContent(ctx);
+  await sweep();
+  const query = spyOn(document, 'querySelectorAll');
+  document.querySelector('#status')!.textContent = 'Updated';
+  await sweep();
+  expect(query).not.toHaveBeenCalled();
+  const entry = document.createElement('ytd-guide-entry-renderer');
+  entry.innerHTML = '<a href="/premium">Premium</a>';
+  document.querySelector('main')!.append(entry);
+  await sweep();
+  expect(entry.dataset.cleanYoutubeHidden).toBe('1');
+  expect(query).not.toHaveBeenCalled();
+  entry.querySelector('a')!.remove();
+  await sweep();
+  expect(entry.dataset.cleanYoutubeHidden).toBeUndefined();
+});
+
+test('player polling starts on insertion and stops on removal, disabling and invalidation', async () => {
+  jest.useFakeTimers();
+  const interval = spyOn(globalThis, 'setInterval');
+  const clear = spyOn(globalThis, 'clearInterval');
+  startContent(ctx);
+  await sweep();
+  expect(interval).not.toHaveBeenCalled();
+  const player = document.createElement('div');
+  player.id = 'movie_player';
+  player.className = 'ad-showing';
+  player.innerHTML = '<video></video>';
+  document.body.append(player);
+  await sweep();
+  expect(interval).toHaveBeenCalledTimes(1);
+  jest.advanceTimersByTime(200);
+  expect(player.querySelector('video')!.muted).toBe(true);
+  player.remove();
+  await sweep();
+  expect(clear).toHaveBeenCalledTimes(1);
+  expect(player.querySelector('video')!.muted).toBe(false);
+  document.body.append(player);
+  await sweep();
+  await setSetting('blockAds', false);
+  await sweep();
+  expect(clear).toHaveBeenCalledTimes(2);
+  await setSetting('blockAds', true);
+  await sweep();
+  ctx.notifyInvalidated();
+  expect(clear).toHaveBeenCalledTimes(3);
 });

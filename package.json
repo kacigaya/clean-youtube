@@ -15,6 +15,7 @@
     "postinstall": "wxt prepare",
     "test": "bun test",
     "test:browser": "playwright test",
+    "profile:content": "bun run build && bun browser-tests/profile.ts",
     "lint:firefox": "web-ext lint --source-dir .output/firefox-mv2"
   },
   "dependencies": {
