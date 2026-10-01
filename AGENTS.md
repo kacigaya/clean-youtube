@@ -20,6 +20,8 @@
 - Dismiss modals through native page controls. Never remove shared backdrops or scroll locks.
 - Register feature CSS through the browser's native content-script manifest. Gate rules with
   root attributes; Firefox unload can destroy callbacks before DOM styles are cleaned up.
+- Keep the one-second context validity check and visibility-change check even without a player:
+  Chromium can retain native CSS after uninstall until the enabling attributes are removed.
 - Settings read retries use 1, 2, and 4 seconds; cancel timers on unsubscribe/invalidation.
 - Tests must cover content-script invalidation and asynchronous storage failures or races.
 - Pull-request validation uses Ubuntu 24.04. Release packaging uses Ubuntu 26.04 and uploads

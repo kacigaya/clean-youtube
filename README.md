@@ -41,8 +41,10 @@ Failed saves leave the confirmed switch state intact.
 Player and dialog actions wait for a successful initial read, including when that read needs a retry.
 
 Feature rules are registered as native content CSS and enabled through attributes on the page's
-root element. The browser removes that CSS on extension unload, including Firefox, where content
-script callbacks may be destroyed before they can clean up a DOM-inserted stylesheet.
+root element. Firefox removes that CSS on extension unload, even when content-script callbacks
+are destroyed before cleanup. Chromium can retain native CSS in loaded pages; a context check
+every second and on visibility changes removes the enabling attributes after uninstall.
+Browser timer throttling can delay this cleanup in background tabs.
 These rules require CSS nesting and `:has()` support; older browser versions are not tested.
 
 Modal dismissal uses the page's native Close control so its focus and scroll state are released
