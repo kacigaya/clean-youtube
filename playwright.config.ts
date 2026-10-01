@@ -12,7 +12,7 @@ export default defineConfig({
     { name: 'firefox', use: { browserName: 'firefox' } },
   ],
   webServer: {
-    command: 'bun run build && bun build browser-tests/fixture.ts --outdir .output/test-fixture --target browser && bun browser-tests/server.ts',
+    command: 'bun run build && bun run build:firefox && bun build browser-tests/fixture.ts --outdir .output/test-fixture --target browser && bun browser-tests/server.ts',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
   },

@@ -15,6 +15,7 @@
     "postinstall": "wxt prepare",
     "test": "bun test",
     "test:browser": "playwright test",
+    "test:live": "LIVE_YOUTUBE=1 playwright test live.pw.ts",
     "profile:content": "bun run build && bun browser-tests/profile.ts",
     "lint:firefox": "web-ext lint --source-dir .output/firefox-mv2"
   },
