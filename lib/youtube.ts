@@ -34,7 +34,7 @@ const hasPremiumLink = (root: ParentNode) => linksTo(root,
 const hasMembershipLink = (root: ParentNode) => linksTo(root,
   (path) => /^\/channel\/[^/]+\/join\/?$/.test(path));
 
-/** Static rules per feature, injected as one stylesheet built from the enabled ones. */
+/** Static rules per feature, used by native content CSS and browser fixtures. */
 export const CSS: Record<keyof Settings, string> = {
   hidePremiumEntry: `
     ytmusic-guide-entry-renderer:has(${PREMIUM_LINK}),
@@ -81,8 +81,7 @@ export const CSS: Record<keyof Settings, string> = {
   `,
   /**
    * Feed and sidebar ad containers only. Nothing inside the player is hidden:
-   * YouTube measures its own ad containers there, and a zero-sized one is read
-   * as ad blocking. Player ads are handled by skipPlayerAd instead.
+   * Preserve the player's layout. Player ads are handled by skipPlayerAd instead.
    */
   blockAds: `
     ytd-rich-item-renderer:has(ytd-ad-slot-renderer),
@@ -246,11 +245,9 @@ export function restorePlayerMute(root: ParentNode = document) {
  * offers the button.
  *
  * `seekPastAd` also jumps an unskippable ad to its end, which clears it outright
- * instead of leaving it to play silent. That is only safe on YouTube Music.
- * Seeking reports the ad as watched in ~0 ms with the player's quartile progress
- * pings all firing in one frame, and youtube.com flags that shape server-side to
- * raise the "ad blockers violate YouTube's Terms of Service" wall. YouTube Music
- * runs no such enforcement today, so callers there opt in.
+ * instead of leaving it to play silent. Callers opt in only on YouTube Music;
+ * the YouTube path preserves playback position. Platform enforcement can change,
+ * so Music seeking remains a deliberate limitation rather than a guarantee.
  */
 export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
   const player = root.querySelector<HTMLElement>('#movie_player.ad-showing, #player.ad-showing');
