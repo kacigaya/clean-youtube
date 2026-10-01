@@ -21,6 +21,6 @@ jobs:
       - run: bun run compile
       - run: bun run build:firefox
       - run: bun run lint:firefox
-      - run: bunx --no-install playwright install --with-deps chromium
+      - run: bunx --no-install playwright install --with-deps chromium firefox
       # Playwright builds Chrome before serving its deterministic fixtures.
       - run: bun run test:browser
