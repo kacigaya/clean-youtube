@@ -19,7 +19,6 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # Ship nothing that fails the same checks used locally.
       - run: bun test
       - run: bun run compile
       - run: bun run build:firefox
@@ -30,8 +29,7 @@ jobs:
       - run: bun run zip
       - run: bun run zip:firefox
 
-      # Named explicitly rather than globbed, so re-enabling zip.zipSources in
-      # wxt.config.ts cannot quietly start publishing a sources zip.
+      # Restrict uploads to browser ZIPs so source ZIPs cannot be published by accident.
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |

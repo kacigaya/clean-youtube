@@ -65,8 +65,7 @@ export async function openRuntime(browserName: string, fixture = runtimeFixture,
   const path = join(directory, 'extension');
   await cp(resolve('.output/firefox-mv2'), path, { recursive: true });
   const manifest = JSON.parse(await readFile(join(path, 'manifest.json'), 'utf8'));
-  // Temporary Firefox installs need an ID for storage.sync. Production identity
-  // still belongs to AMO; this change exists only in the disposable test copy.
+  // Set an ID for storage.sync in the test copy only; AMO owns the production ID.
   manifest.browser_specific_settings.gecko.id = extensionId;
   await writeFile(join(path, 'manifest.json'), JSON.stringify(manifest));
   const browser = await startFirefox(uuid, extensionId).catch(async (error: unknown) => { await rm(directory, { recursive: true, force: true }); throw error; });

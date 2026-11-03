@@ -51,10 +51,7 @@ export const CSS: Record<keyof Settings, string> = {
     ytd-video-renderer:has(${SHORTS_LINK}),
     .ytLockupViewModelWrapper:has(${SHORTS_LINK}) { display: none !important; }
   `,
-  /**
-   * The shelf is matched by its game cards rather than its heading, which is
-   * localised ("Jeux integres YouTube", "YouTube Playables", ...).
-   */
+  /** Match game cards because shelf headings vary by language. */
   hidePlayables: `
     ytd-guide-entry-renderer:has(${PLAYABLES_LINK}),
     ytd-mini-guide-entry-renderer:has(${PLAYABLES_LINK}),
@@ -62,11 +59,7 @@ export const CSS: Record<keyof Settings, string> = {
     ytd-rich-item-renderer:has(ytd-mini-game-card-view-model),
     ytd-mini-game-card-view-model { display: none !important; }
   `,
-  /**
-   * Matched by the join endpoint, never by the button label. Three button
-   * wrappers because YouTube is mid-migration from `ytd-button-renderer` to the
-   * view-model elements, and both shapes are live depending on the surface.
-   */
+  /** Membership markers cover button renderers and view models, matched by the Join URL. */
   hideMembership: `
     [data-clean-youtube-membership-hidden] { display: none !important; }
   `,
@@ -79,10 +72,7 @@ export const CSS: Record<keyof Settings, string> = {
     ytmusic-statement-banner-renderer:has(${PREMIUM_LINK}),
     ytd-statement-banner-renderer:has(${PREMIUM_LINK}) { display: none !important; }
   `,
-  /**
-   * Feed and sidebar ad containers only. Nothing inside the player is hidden:
-   * Preserve the player's layout. Player ads are handled by skipPlayerAd instead.
-   */
+  /** Keep player layout intact; skipPlayerAd handles player ads. */
   blockAds: `
     ytd-rich-item-renderer:has(ytd-ad-slot-renderer),
     ytd-rich-item-renderer:has(ytd-feed-nudge-renderer),
@@ -120,11 +110,7 @@ function queryWithin(root: ParentNode, selector: string): HTMLElement[] {
   return elements;
 }
 
-/**
- * Mark sidebar entries that point at Premium, matched by link or by icon.
- * The icon check catches localised entries ("S'abonner", "Subscribe", ...) that
- * a text match would miss, and the CSS rule above hides whatever is marked.
- */
+/** Match Premium links or icons without depending on translated labels. */
 export function hidePremiumGuideEntries(root: ParentNode = document) {
   for (const entry of queryWithin(root,
     'ytmusic-guide-entry-renderer, ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer',
@@ -164,9 +150,12 @@ function isEnabled(element: HTMLElement): boolean {
 
 function isActionable(element: HTMLElement): boolean {
   if (!isEnabled(element) || element.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+  // Children can override inherited visibility, but cannot override display: none.
+  const visibility = getComputedStyle(element).visibility;
+  if (visibility === 'hidden' || visibility === 'collapse') return false;
   for (let current: HTMLElement | null = element; current; current = current.parentElement) {
     const style = getComputedStyle(current);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+    if (style.display === 'none') return false;
   }
   return true;
 }
@@ -200,9 +189,8 @@ export function dismissUpsells(root: ParentNode = document) {
   for (const promo of queryWithin(root,
     'ytmusic-mealbar-promo-renderer, ytd-mealbar-promo-renderer',
   )) {
-    // Music mealbars are Premium upsells only, and most carry no Premium link at
-    // all — the offer sits on a plain button. On youtube.com the same element
-    // also carries product notices, so there it stays matched by the link.
+    // Music mealbars are Premium offers and may have no link.
+    // YouTube mealbars also show product notices, so require a Premium link there.
     if (promo.tagName !== 'YTMUSIC-MEALBAR-PROMO-RENDERER' && !hasPremiumLink(promo)) {
       continue;
     }
@@ -215,13 +203,11 @@ export function dismissMembershipDialogs(root: ParentNode = document) {
   return dismissDialogs(root, hasMembershipLink);
 }
 
-/** Keep only the current ad's video so replacement and teardown can restore
- * even a detached player. Old entries are released on the next poll. */
+/** Keep detached videos until the next poll or teardown can restore their mute state. */
 const mutedBeforeAd = new Map<HTMLVideoElement, boolean>();
 
 function getPlayerVideo(root: ParentNode): HTMLVideoElement | null {
-  // Two calls, not one selector list: a list matches in document order, so a
-  // stray <video> ahead of the player would win over the real one.
+  // A selector list would pick the first video in DOM order, ignoring class priority.
   return (
     root.querySelector<HTMLVideoElement>('video.html5-main-video') ??
     root.querySelector<HTMLVideoElement>('video')
@@ -240,15 +226,8 @@ export function restorePlayerMute(root: ParentNode = document) {
   return restored;
 }
 
-/**
- * Get through the ad currently playing: mute it, and click skip if YouTube
- * offers the button.
- *
- * `seekPastAd` also jumps an unskippable ad to its end, which clears it outright
- * instead of leaving it to play silent. Callers opt in only on YouTube Music;
- * the YouTube path preserves playback position. Platform enforcement can change,
- * so Music seeking remains a deliberate limitation rather than a guarantee.
- */
+/** Mute ads and click Skip; seekPastAd also seeks to the end on Music only.
+ * YouTube keeps its playback position. Music seeking depends on platform behavior. */
 export function skipPlayerAd(root: ParentNode = document, seekPastAd = false) {
   const player = root.querySelector<HTMLElement>('#movie_player.ad-showing, #player.ad-showing');
   const video = player ? getPlayerVideo(player) : null;

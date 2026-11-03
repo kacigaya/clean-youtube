@@ -1,17 +1,17 @@
 import { storage } from 'wxt/utils/storage';
 
 export interface Settings {
-  /** Hide Premium entries in the YouTube and YouTube Music sidebars. */
+  /** Applies to both YouTube and Music sidebars. */
   hidePremiumEntry: boolean;
-  /** Hide Shorts discovery UI on YouTube while keeping direct URLs usable. */
+  /** Hide discovery links and shelves; direct Shorts URLs stay usable. */
   hideShorts: boolean;
-  /** Hide the Playables games shelf and its sidebar entry on YouTube. */
+  /** Covers the games shelf and sidebar entry. */
   hidePlayables: boolean;
-  /** Hide channel membership Join buttons and the offers they open. */
+  /** Covers channel Join buttons and membership offers. */
   hideMembership: boolean;
-  /** Auto-dismiss Premium ads, dialogs and promo bars. */
+  /** Dismiss dialogs and hide Premium banners. */
   blockUpsell: boolean;
-  /** Mute and skip player ads as they start, and hide feed and sidebar ad slots. */
+  /** Mute and skip player ads; hide feed and sidebar ad slots. */
   blockAds: boolean;
 }
 
@@ -97,8 +97,7 @@ export function subscribeSettings(
       if (active && currentRevision === revision) {
         onError(error);
         if (!active || currentRevision !== revision) return;
-        // Three retries per failure sequence; changes and successful reads reset
-        // the budget. Retain the last confirmed settings while storage recovers.
+        // Keep confirmed settings during retries; changes and successful reads reset the retry limit.
         const delay = [1000, 2000, 4000][retries++];
         if (delay !== undefined) retryTimer = setTimeout(() => { void refresh(); }, delay);
       }

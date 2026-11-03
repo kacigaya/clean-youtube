@@ -42,8 +42,7 @@ for (const hostname of ['www.youtube.com', 'music.youtube.com']) {
       await page.reload();
       await expect.poll(() => page.evaluate('document.documentElement.hasAttribute("data-clean-youtube-hidepremiumentry")')).toBe(true);
     } catch (error) {
-      // Preserve diagnostics for consent, region and network failures without
-      // silently accepting a page that never rendered the application.
+      // Log consent, region, and network diagnostics before failing the test.
       console.error(JSON.stringify({ browserName, hostname, diagnostic: await diagnostics?.().catch(() => 'unavailable') }));
       throw error;
     } finally { await runtime.close(); }

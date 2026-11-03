@@ -15,10 +15,7 @@ import {
 const PREMIUM_ICON =
   'M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1Zm0 2a9 9 0 110 18.001A9 9 0 0112 3Z';
 
-/**
- * Everything off but the named features, so a new setting cannot churn every
- * case. Keys come from `CSS` so the feature tests follow the available rules.
- */
+/** New features stay disabled unless the test requests them. */
 function only(...enabled: (keyof Settings)[]): Settings {
   const keys = Object.keys(CSS) as (keyof Settings)[];
   return Object.fromEntries(

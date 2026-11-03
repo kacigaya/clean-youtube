@@ -35,8 +35,7 @@ export function startContent(ctx: ContentScriptContext) {
       poll = undefined;
       restorePlayerMute();
     } else if (poll === undefined) {
-      // Own the interval explicitly; restarting it must not accumulate context
-      // invalidation listeners. Teardown below always clears it.
+      // Manage the interval here to avoid adding invalidation listeners on each restart.
       poll = setInterval(() => {
         if (ctx.isInvalid || stopped) return;
         if (!hasPlayer()) syncPlayerPoll();
@@ -74,7 +73,7 @@ export function startContent(ctx: ContentScriptContext) {
     if (stopped || ctx.isInvalid) return;
     syncPlayerPoll();
     for (const record of records) {
-      // Reclassify affected ancestors after link/icon/control changes or removals.
+      // Child changes can invalidate an ancestor's feature match.
       for (let target = record.target instanceof Element ? record.target : record.target.parentElement;
            target; target = target.parentElement) {
         if (target.matches(SWEEP_TARGETS)) sweep(target);
@@ -86,7 +85,7 @@ export function startContent(ctx: ContentScriptContext) {
       }
     }
   });
-  // Register before storage access so even a rejected or delayed read is safe.
+  // Register cleanup before storage reads can fail or remain pending.
   ctx.onInvalidated(() => {
     stopped = true;
     observer.disconnect();
@@ -107,8 +106,7 @@ export function startContent(ctx: ContentScriptContext) {
     attributes: true,
     attributeFilter: ['opened', 'dialog', 'href', 'd', 'disabled', 'aria-disabled', 'hidden', 'aria-hidden', 'inert', 'style', 'class', 'id'],
   });
-  // Chromium keeps native CSS in loaded pages after uninstall. Detect invalid
-  // contexts even before the first read completes or when no player is polling.
+  // Chromium can retain CSS after uninstall; check validity even without settings or a player.
   ctx.setInterval(() => {}, 1000);
   ctx.addEventListener(document, 'visibilitychange', () => { void ctx.isInvalid; });
   unsubscribe = subscribeSettings((nextSettings) => {
@@ -124,8 +122,7 @@ export function startContent(ctx: ContentScriptContext) {
   }, (error) => {
     if (stopped || ctx.isInvalid) return;
     console.warn('Clean YouTube could not load settings; retaining current settings.', error);
-    // An initial failure must not enable player/dialog actions before a stored
-    // disabled preference can be recovered. Later failures keep confirmed state.
+    // Wait for saved preferences before player or dialog actions; retain confirmed settings on later failures.
     syncPlayerPoll();
     sweep();
   });

@@ -4,11 +4,9 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { buildFeatureCss } from './lib/youtube';
 
-// See https://wxt.dev/api/config.html
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
-  // Firefox and Opera get a sources zip by default. Only an AMO review
-  // submission needs it, so nothing builds it until one is due.
+  // Disable default Firefox and Opera source ZIPs; build them only for AMO review.
   zip: {
     zipSources: false,
   },
@@ -38,8 +36,7 @@ export default defineConfig({
       ? {
           browser_specific_settings: {
             gecko: {
-              // Temporary installs need a stable ID for storage.sync. AMO
-              // continues to assign the production identity when signing.
+              // Temporary installs need an ID for storage.sync; AMO assigns the production ID.
               ...(mode === 'development' ? { id: 'clean-youtube-dev@kacigaya' } : {}),
               data_collection_permissions: {
                 required: ['none'] as const,

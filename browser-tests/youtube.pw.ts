@@ -51,6 +51,41 @@ test('native dismissal selects a visible enabled Close button', async ({ page })
   await expect(page.locator('tp-yt-paper-dialog')).not.toHaveAttribute('opened');
 });
 
+test('a visible Music promo can dismiss inside a visibility-hidden popup container', async ({ page }) => {
+  await page.setContent(`<style>
+    ytmusic-popup-container { visibility: hidden; }
+    ytmusic-mealbar-promo-renderer { visibility: visible; }
+  </style><ytmusic-popup-container>
+    <ytmusic-mealbar-promo-renderer dialog="true">
+      <yt-button-renderer class="dismiss-button" dialog-dismiss>
+        <yt-button-shape><button>Non, merci</button></yt-button-shape>
+      </yt-button-renderer>
+    </ytmusic-mealbar-promo-renderer>
+  </ytmusic-popup-container>`);
+  await page.evaluate(() => document.querySelector('button')!.addEventListener('click', () => document.querySelector('ytmusic-mealbar-promo-renderer')!.remove()));
+  await expect(page.locator('button')).toBeVisible();
+  const evaluate = await contentWorld(page);
+  expect(await evaluate('window.youtube.dismissUpsells()')).toBe(true);
+  await expect(page.locator('ytmusic-mealbar-promo-renderer')).toHaveCount(0);
+});
+
+test('dismissal skips inherited hidden visibility and display-none ancestors', async ({ page }) => {
+  await page.setContent(`<ytmusic-mealbar-promo-renderer dialog="true">
+    <div style="visibility: hidden"><button dialog-dismiss>Hidden</button></div>
+    <div style="visibility: collapse"><button dialog-dismiss>Collapsed</button></div>
+    <div style="display: none"><button dialog-dismiss style="visibility: visible">Not rendered</button></div>
+    <button id="close-button">Non, merci</button>
+  </ytmusic-mealbar-promo-renderer>`);
+  await page.evaluate(() => {
+    for (const button of document.querySelectorAll('button')) {
+      button.addEventListener('click', () => { document.body.dataset.clicked = button.textContent!; });
+    }
+  });
+  const evaluate = await contentWorld(page);
+  expect(await evaluate('window.youtube.dismissUpsells()')).toBe(true);
+  await expect(page.locator('body')).toHaveAttribute('data-clicked', 'Non, merci');
+});
+
 test('CSS leaves an undismissable membership modal visible and ignores Premium-like URLs', async ({ page }) => {
   await page.setContent('<ytd-popup-container><tp-yt-paper-dialog opened><a href="/channel/abc/join">Join</a></tp-yt-paper-dialog></ytd-popup-container><ytd-guide-entry-renderer id="channel"><a href="/@premium_news">Channel</a></ytd-guide-entry-renderer><ytd-guide-entry-renderer id="premium"><a href="/premium?source=guide">Premium</a></ytd-guide-entry-renderer>');
   const evaluate = await contentWorld(page);
